@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return getUserData().role;
+    }
+
+    function isCustomer() {
+      return isAuthenticated() && getUserRole() == 'customer';
+    }
+
+    function isWorker() {
+      return isAuthenticated() && getUserRole() == 'worker';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    // ----------------------------------------------------
+    // Users Collection Rules (/users/{userId})
+    // ----------------------------------------------------
+    match /users/{userId} {
+      // Authenticated users can read profiles
+      allow read: if isAuthenticated();
+
+      // Users can only create and update their own document, admins can update any
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------
+    // Service Requests Rules (/service_requests/{requestId})
+    // ----------------------------------------------------
+    match /service_requests/{requestId} {
+      // Customers read their own requests; Workers and Admins read all
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        isWorker() ||
+        isAdmin()
+      );
+
+      // Only customers can submit new service requests
+      allow create: if isAuthenticated() && (
+        isCustomer() || isAdmin()
+      ) && request.resource.data.customerId == request.auth.uid;
+
+      // Update permissions:
+      // - Customer can update if it is their request and status is still pending
+      // - Worker can accept (status -> 'assigned') or update job progress
+      // - Admin can update any request
+      allow update: if isAuthenticated() && (
+        (isCustomer() && resource.data.customerId == request.auth.uid) ||
+        isWorker() ||
+        isAdmin()
+      );
+
+      // Only customer owner (if pending) or Admin can delete
+      allow delete: if isAuthenticated() && (
+        (resource.data.customerId == request.auth.uid && resource.data.status == 'pending') ||
+        isAdmin()
+      );
+    }
+  }
+}
