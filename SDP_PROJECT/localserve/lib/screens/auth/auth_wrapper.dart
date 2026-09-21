@@ -5,7 +5,6 @@ import '../../services/auth_service.dart';
 import 'login_screen.dart';
 import '../home_screen.dart';
 import '../worker/worker_dashboard_screen.dart';
-import '../admin/admin_dashboard_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -37,8 +36,6 @@ class AuthWrapper extends StatelessWidget {
     switch (user.role) {
       case UserRole.worker:
         return const WorkerDashboardScreen();
-      case UserRole.admin:
-        return const AdminDashboardScreen();
       case UserRole.customer:
         return const HomeScreen();
     }

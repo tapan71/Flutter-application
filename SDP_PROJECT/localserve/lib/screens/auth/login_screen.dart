@@ -252,15 +252,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             );
                           },
                         ),
-                        ActionChip(
-                          avatar: const Icon(Icons.admin_panel_settings, size: 18),
-                          label: const Text('Admin Demo'),
-                          onPressed: () {
-                            authService.signInWithDemoUser(
-                              AuthService.demoUsers[2],
-                            );
-                          },
-                        ),
                       ],
                     ),
                   ],

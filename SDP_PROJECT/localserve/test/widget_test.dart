@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:localserve/main.dart';
+import 'package:localserve/models/user_model.dart';
+import 'package:localserve/services/auth_service.dart';
 
 void main() {
   testWidgets(
@@ -19,7 +21,6 @@ void main() {
       // Check Role chips for quick demo login
       expect(find.text('Customer Demo'), findsOneWidget);
       expect(find.text('Worker Demo'), findsOneWidget);
-      expect(find.text('Admin Demo'), findsOneWidget);
     },
   );
 
@@ -29,17 +30,14 @@ void main() {
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
-      // Find and scroll to the customer demo chip
       final customerChip = find.widgetWithText(ActionChip, 'Customer Demo');
       expect(customerChip, findsOneWidget);
       await tester.ensureVisible(customerChip);
       await tester.pumpAndSettle();
 
-      // Tap customer chip
       await tester.tap(customerChip);
       await tester.pumpAndSettle();
 
-      // Should now be on customer dashboard
       expect(find.text('Find Local Home Services'), findsOneWidget);
       expect(find.text('Request a Service'), findsOneWidget);
     },
@@ -59,30 +57,38 @@ void main() {
       await tester.tap(workerChip);
       await tester.pumpAndSettle();
 
-      // Should now be on worker dashboard
       expect(find.text('Available Jobs'), findsOneWidget);
       expect(find.text('My Active Jobs'), findsOneWidget);
     },
   );
 
   testWidgets(
-    '1-click Admin demo sign-in navigates to Admin Dashboard',
+    'Registered worker preserves Worker role upon login and routes to Worker Dashboard',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const LocalServeApp());
-      await tester.pumpAndSettle();
+      final auth = AuthService();
+      const testEmail = 'carpenter.bob@example.com';
+      const testPass = 'secret123';
 
-      final adminChip = find.widgetWithText(ActionChip, 'Admin Demo');
-      expect(adminChip, findsOneWidget);
-      await tester.ensureVisible(adminChip);
-      await tester.pumpAndSettle();
+      // 1. Sign up as Worker
+      await auth.signUp(
+        email: testEmail,
+        password: testPass,
+        name: 'Bob Builder',
+        mobile: '9876543210',
+        role: UserRole.worker,
+        workerSkill: 'Carpentry',
+      );
 
-      await tester.tap(adminChip);
-      await tester.pumpAndSettle();
+      expect(auth.currentUser?.role, UserRole.worker);
 
-      // Should now be on admin dashboard
-      expect(find.text('LocalServe Admin'), findsOneWidget);
-      expect(find.text('Requests & Stats'), findsOneWidget);
-      expect(find.text('User Management'), findsOneWidget);
+      // 2. Log out
+      await auth.signOut();
+      expect(auth.currentUser, isNull);
+
+      // 3. Log back in with the registered email
+      await auth.signIn(email: testEmail, password: testPass);
+      expect(auth.currentUser?.role, UserRole.worker);
+      expect(auth.currentUser?.workerSkill, 'Carpentry');
     },
   );
 }

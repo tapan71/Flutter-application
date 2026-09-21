@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -9,11 +10,15 @@ import 'screens/auth/auth_wrapper.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase safely
-  try {
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint('Firebase not initialized with native config yet (running with integrated mock/demo support): $e');
+  // Initialize Firebase safely:
+  // On Web, Firebase.initializeApp() requires explicit FirebaseOptions.
+  // On Android/iOS, it reads from google-services.json / GoogleService-Info.plist.
+  if (!kIsWeb) {
+    try {
+      await Firebase.initializeApp();
+    } catch (e) {
+      debugPrint('Native Firebase init note: $e');
+    }
   }
 
   runApp(const LocalServeApp());

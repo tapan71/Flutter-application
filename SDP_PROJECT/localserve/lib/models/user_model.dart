@@ -1,7 +1,6 @@
 enum UserRole {
   customer,
-  worker,
-  admin;
+  worker;
 
   String get displayName {
     switch (this) {
@@ -9,8 +8,6 @@ enum UserRole {
         return 'Customer';
       case UserRole.worker:
         return 'Worker';
-      case UserRole.admin:
-        return 'Admin';
     }
   }
 
@@ -18,8 +15,6 @@ enum UserRole {
     switch (role?.toLowerCase()) {
       case 'worker':
         return UserRole.worker;
-      case 'admin':
-        return UserRole.admin;
       case 'customer':
       default:
         return UserRole.customer;
@@ -50,7 +45,6 @@ class AppUser {
 
   bool get isCustomer => role == UserRole.customer;
   bool get isWorker => role == UserRole.worker;
-  bool get isAdmin => role == UserRole.admin;
 
   Map<String, dynamic> toMap() {
     return {

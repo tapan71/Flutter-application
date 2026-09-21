@@ -55,8 +55,8 @@ class DatabaseService extends ChangeNotifier {
       dueDate: DateTime.now().subtract(const Duration(days: 2)),
       status: 'completed',
       customerId: 'demo_customer_1',
-      workerId: 'demo_worker_2',
-      workerName: 'David Clean',
+      workerId: 'demo_worker_1',
+      workerName: 'Alex Plumber',
       createdAt: DateTime.now().subtract(const Duration(days: 3)),
     ),
   ];
@@ -76,13 +76,6 @@ class DatabaseService extends ChangeNotifier {
       mobile: '9123456780',
       role: UserRole.worker,
       workerSkill: 'Plumbing',
-    ),
-    const AppUser(
-      uid: 'demo_admin_1',
-      email: 'admin@localserve.com',
-      name: 'Admin Supervisor',
-      mobile: '9998887776',
-      role: UserRole.admin,
     ),
   ];
 
@@ -109,9 +102,9 @@ class DatabaseService extends ChangeNotifier {
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
               .toList());
     } else {
-      return Stream.value(
+      return Stream<List<ServiceRequest>>.value(
         _mockRequests.where((r) => r.customerId == customerId).toList(),
-      );
+      ).asBroadcastStream();
     }
   }
 
@@ -125,9 +118,9 @@ class DatabaseService extends ChangeNotifier {
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
               .toList());
     } else {
-      return Stream.value(
+      return Stream<List<ServiceRequest>>.value(
         _mockRequests.where((r) => r.status == 'pending').toList(),
-      );
+      ).asBroadcastStream();
     }
   }
 
@@ -141,35 +134,9 @@ class DatabaseService extends ChangeNotifier {
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
               .toList());
     } else {
-      return Stream.value(
+      return Stream<List<ServiceRequest>>.value(
         _mockRequests.where((r) => r.workerId == workerId).toList(),
-      );
-    }
-  }
-
-  Stream<List<ServiceRequest>> streamAllRequests() {
-    if (_isFirebaseInitialized) {
-      return FirebaseFirestore.instance
-          .collection('service_requests')
-          .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
-              .toList());
-    } else {
-      return Stream.value(List<ServiceRequest>.from(_mockRequests));
-    }
-  }
-
-  Stream<List<AppUser>> streamAllUsers() {
-    if (_isFirebaseInitialized) {
-      return FirebaseFirestore.instance
-          .collection('users')
-          .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => AppUser.fromMap(doc.data(), uid: doc.id))
-              .toList());
-    } else {
-      return Stream.value(List<AppUser>.from(_mockUsers));
+      ).asBroadcastStream();
     }
   }
 
@@ -257,21 +224,6 @@ class DatabaseService extends ChangeNotifier {
           status: newStatus,
           completed: newStatus == 'completed',
         );
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> toggleWorkerApproval(String uid, bool currentStatus) async {
-    if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .update({'isApproved': !currentStatus});
-    } else {
-      final index = _mockUsers.indexWhere((u) => u.uid == uid);
-      if (index != -1) {
-        _mockUsers[index] = _mockUsers[index].copyWith(isApproved: !currentStatus);
         notifyListeners();
       }
     }

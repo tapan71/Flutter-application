@@ -16,7 +16,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _adminCodeController = TextEditingController();
 
   UserRole _selectedRole = UserRole.customer;
   String _workerSkill = 'Plumbing';
@@ -39,20 +38,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _mobileController.dispose();
     _passwordController.dispose();
-    _adminCodeController.dispose();
     super.dispose();
   }
 
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
-
-    if (_selectedRole == UserRole.admin &&
-        _adminCodeController.text.trim() != 'admin123') {
-      setState(() {
-        _errorMessage = 'Invalid Admin Passcode! (Default: admin123)';
-      });
-      return;
-    }
 
     setState(() {
       _errorMessage = null;
@@ -151,11 +141,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           label: Text('Worker'),
                           icon: Icon(Icons.handyman),
                         ),
-                        ButtonSegment(
-                          value: UserRole.admin,
-                          label: Text('Admin'),
-                          icon: Icon(Icons.admin_panel_settings),
-                        ),
                       ],
                       selected: {_selectedRole},
                       onSelectionChanged: (Set<UserRole> newSelection) {
@@ -187,25 +172,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               _workerSkill = val;
                             });
                           }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Admin Secret Passcode Field
-                    if (_selectedRole == UserRole.admin) ...[
-                      TextFormField(
-                        controller: _adminCodeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Admin Passcode (Default: admin123)',
-                          prefixIcon: Icon(Icons.security),
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (val) {
-                          if (val == null || val.isEmpty) {
-                            return 'Enter admin verification passcode';
-                          }
-                          return null;
                         },
                       ),
                       const SizedBox(height: 16),
