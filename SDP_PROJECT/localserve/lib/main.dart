@@ -16,8 +16,9 @@ Future<void> main() async {
   if (!kIsWeb) {
     try {
       await Firebase.initializeApp();
-    } catch (e) {
-      debugPrint('Native Firebase init note: $e');
+    } catch (_) {
+      // Firebase configuration (google-services.json) is not yet added.
+      // LocalServe automatically operates in offline/mock demo mode.
     }
   }
 

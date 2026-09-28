@@ -8,8 +8,8 @@ import '../models/user_model.dart';
 class DatabaseService extends ChangeNotifier {
   bool _isFirebaseInitialized = false;
 
-  // In-memory store for mock/demo mode
-  final List<ServiceRequest> _mockRequests = [
+  // Static in-memory store for mock/demo mode to persist across logins & logouts
+  static final List<ServiceRequest> _mockRequests = [
     ServiceRequest(
       id: 'req_1',
       service: 'Plumbing',
@@ -61,12 +61,13 @@ class DatabaseService extends ChangeNotifier {
     ),
   ];
 
-  final List<AppUser> _mockUsers = [
+  static final List<AppUser> _mockUsers = [
     const AppUser(
       uid: 'demo_customer_1',
       email: 'customer@localserve.com',
       name: 'John Customer',
       mobile: '9876543210',
+      address: '102 Green Heights, 5th Main Road',
       role: UserRole.customer,
     ),
     const AppUser(
@@ -74,10 +75,14 @@ class DatabaseService extends ChangeNotifier {
       email: 'worker@localserve.com',
       name: 'Alex Plumber',
       mobile: '9123456780',
+      address: 'Shop 12, Market Complex, West Side',
       role: UserRole.worker,
       workerSkill: 'Plumbing',
     ),
   ];
+
+  static final StreamController<List<ServiceRequest>> _mockRequestsStreamController =
+      StreamController<List<ServiceRequest>>.broadcast();
 
   List<ServiceRequest> get allRequests => List.unmodifiable(_mockRequests);
   List<AppUser> get allUsers => List.unmodifiable(_mockUsers);
@@ -90,21 +95,43 @@ class DatabaseService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // Helper to query customer requests by customerId OR email
+  List<ServiceRequest> getCustomerRequests(String customerId, {String? customerEmail}) {
+    return _mockRequests.where((r) {
+      if (r.customerId == customerId) return true;
+      if (customerEmail != null &&
+          customerEmail.isNotEmpty &&
+          r.email.trim().toLowerCase() == customerEmail.trim().toLowerCase()) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
+
   // --- QUERY STREAMS ---
 
-  Stream<List<ServiceRequest>> streamCustomerRequests(String customerId) {
+  Stream<List<ServiceRequest>> streamCustomerRequests(String customerId, {String? customerEmail}) {
     if (_isFirebaseInitialized) {
       return FirebaseFirestore.instance
           .collection('service_requests')
-          .where('customerId', isEqualTo: customerId)
           .snapshots()
           .map((snapshot) => snapshot.docs
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+              .where((r) =>
+                  r.customerId == customerId ||
+                  (customerEmail != null &&
+                      customerEmail.isNotEmpty &&
+                      r.email.trim().toLowerCase() ==
+                          customerEmail.trim().toLowerCase()))
               .toList());
     } else {
-      return Stream<List<ServiceRequest>>.value(
-        _mockRequests.where((r) => r.customerId == customerId).toList(),
-      ).asBroadcastStream();
+      return Stream<List<ServiceRequest>>.multi((controller) {
+        controller.add(getCustomerRequests(customerId, customerEmail: customerEmail));
+        final sub = _mockRequestsStreamController.stream.listen((_) {
+          controller.add(getCustomerRequests(customerId, customerEmail: customerEmail));
+        });
+        controller.onCancel = () => sub.cancel();
+      });
     }
   }
 
@@ -118,9 +145,13 @@ class DatabaseService extends ChangeNotifier {
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
               .toList());
     } else {
-      return Stream<List<ServiceRequest>>.value(
-        _mockRequests.where((r) => r.status == 'pending').toList(),
-      ).asBroadcastStream();
+      return Stream<List<ServiceRequest>>.multi((controller) {
+        controller.add(_mockRequests.where((r) => r.status == 'pending').toList());
+        final sub = _mockRequestsStreamController.stream.listen((_) {
+          controller.add(_mockRequests.where((r) => r.status == 'pending').toList());
+        });
+        controller.onCancel = () => sub.cancel();
+      });
     }
   }
 
@@ -134,9 +165,13 @@ class DatabaseService extends ChangeNotifier {
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
               .toList());
     } else {
-      return Stream<List<ServiceRequest>>.value(
-        _mockRequests.where((r) => r.workerId == workerId).toList(),
-      ).asBroadcastStream();
+      return Stream<List<ServiceRequest>>.multi((controller) {
+        controller.add(_mockRequests.where((r) => r.workerId == workerId).toList());
+        final sub = _mockRequestsStreamController.stream.listen((_) {
+          controller.add(_mockRequests.where((r) => r.workerId == workerId).toList());
+        });
+        controller.onCancel = () => sub.cancel();
+      });
     }
   }
 
@@ -150,6 +185,7 @@ class DatabaseService extends ChangeNotifier {
           .set(request.toMap());
     } else {
       _mockRequests.insert(0, request);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
       notifyListeners();
     }
   }
@@ -164,6 +200,7 @@ class DatabaseService extends ChangeNotifier {
       final index = _mockRequests.indexWhere((r) => r.id == request.id);
       if (index != -1) {
         _mockRequests[index] = request;
+        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
         notifyListeners();
       }
     }
@@ -177,6 +214,7 @@ class DatabaseService extends ChangeNotifier {
           .delete();
     } else {
       _mockRequests.removeWhere((r) => r.id == requestId);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
       notifyListeners();
     }
   }
@@ -203,6 +241,7 @@ class DatabaseService extends ChangeNotifier {
           workerId: workerId,
           workerName: workerName,
         );
+        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
         notifyListeners();
       }
     }
@@ -224,6 +263,7 @@ class DatabaseService extends ChangeNotifier {
           status: newStatus,
           completed: newStatus == 'completed',
         );
+        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
         notifyListeners();
       }
     }

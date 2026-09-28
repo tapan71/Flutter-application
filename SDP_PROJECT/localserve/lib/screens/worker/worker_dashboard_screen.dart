@@ -4,6 +4,7 @@ import '../../models/service_request.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../service_details_screen.dart';
+import '../history_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -58,6 +59,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'All Requests History',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HistoryScreen(currentUser: worker),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Sign Out',
             icon: const Icon(Icons.logout),

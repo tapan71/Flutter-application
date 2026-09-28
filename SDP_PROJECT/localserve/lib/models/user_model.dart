@@ -27,6 +27,7 @@ class AppUser {
   final String email;
   final String name;
   final String mobile;
+  final String? address;
   final UserRole role;
   final String? workerSkill;
   final bool isApproved;
@@ -37,6 +38,7 @@ class AppUser {
     required this.email,
     required this.name,
     required this.mobile,
+    this.address,
     required this.role,
     this.workerSkill,
     this.isApproved = true,
@@ -52,6 +54,7 @@ class AppUser {
       'email': email,
       'name': name,
       'mobile': mobile,
+      'address': address,
       'role': role.name,
       'workerSkill': workerSkill,
       'isApproved': isApproved,
@@ -65,6 +68,7 @@ class AppUser {
       email: map['email'] ?? '',
       name: map['name'] ?? '',
       mobile: map['mobile'] ?? '',
+      address: map['address'] as String?,
       role: UserRole.fromString(map['role'] as String?),
       workerSkill: map['workerSkill'] as String?,
       isApproved: map['isApproved'] as bool? ?? true,
@@ -79,6 +83,7 @@ class AppUser {
     String? email,
     String? name,
     String? mobile,
+    String? address,
     UserRole? role,
     String? workerSkill,
     bool? isApproved,
@@ -89,6 +94,7 @@ class AppUser {
       email: email ?? this.email,
       name: name ?? this.name,
       mobile: mobile ?? this.mobile,
+      address: address ?? this.address,
       role: role ?? this.role,
       workerSkill: workerSkill ?? this.workerSkill,
       isApproved: isApproved ?? this.isApproved,

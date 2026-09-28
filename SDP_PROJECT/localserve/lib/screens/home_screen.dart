@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import 'service_request_screen.dart';
 import 'service_details_screen.dart';
+import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -127,10 +128,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return StreamBuilder<List<ServiceRequest>>(
-      stream: dbService.streamCustomerRequests(user.uid),
+      stream: dbService.streamCustomerRequests(user.uid, customerEmail: user.email),
       builder: (context, snapshot) {
         final allCustomerRequests = snapshot.data ??
-            dbService.allRequests.where((r) => r.customerId == user.uid).toList();
+            dbService.getCustomerRequests(user.uid, customerEmail: user.email);
 
         final visibleRequests = allCustomerRequests.where((request) {
           final query = searchQuery.toLowerCase();
@@ -167,6 +168,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: 'Service History',
+                icon: const Icon(Icons.history_rounded),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HistoryScreen(currentUser: user),
+                    ),
+                  );
+                },
+              ),
               IconButton(
                 tooltip: 'Sign Out',
                 icon: const Icon(Icons.logout),
@@ -221,7 +234,92 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: Colors.grey),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+
+                  // Customer Profile Banner showing registered phone & address
+                  Card(
+                    elevation: 0,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                child: Icon(
+                                  Icons.person,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  user.name,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.green.shade300),
+                                ),
+                                child: Text(
+                                  'Customer Account',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 18),
+                          Row(
+                            children: [
+                              const Icon(Icons.phone_outlined, size: 16, color: Colors.blue),
+                              const SizedBox(width: 6),
+                              Text(
+                                user.mobile.isNotEmpty ? user.mobile : 'No phone registered',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                          if (user.address != null && user.address!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.location_on_outlined, size: 16, color: Colors.redAccent),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    user.address!,
+                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
 
                   // SEARCH
                   TextField(
@@ -273,17 +371,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ADD REQUEST
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => openServiceRequest(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Request a Service'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                  // ACTION BUTTONS: REQUEST & HISTORY
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => openServiceRequest(),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Request Service'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => HistoryScreen(currentUser: user),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.history_rounded),
+                          label: const Text('View History'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 28),

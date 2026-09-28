@@ -23,6 +23,7 @@ class AuthService extends ChangeNotifier {
       email: 'customer@localserve.com',
       name: 'John Customer',
       mobile: '9876543210',
+      address: '102 Green Heights, 5th Main Road',
       role: UserRole.customer,
     ),
     const AppUser(
@@ -30,6 +31,7 @@ class AuthService extends ChangeNotifier {
       email: 'worker@localserve.com',
       name: 'Alex Plumber',
       mobile: '9123456780',
+      address: 'Shop 12, Market Complex, West Side',
       role: UserRole.worker,
       workerSkill: 'Plumbing',
     ),
@@ -155,6 +157,7 @@ class AuthService extends ChangeNotifier {
             email: email.trim(),
             name: email.split('@').first,
             mobile: '9876543210',
+            address: '102 Green Heights, 5th Main Road',
             role: inferredRole,
             workerSkill: inferredRole == UserRole.worker ? 'General Service' : null,
           );
@@ -180,6 +183,7 @@ class AuthService extends ChangeNotifier {
     required String password,
     required String name,
     required String mobile,
+    String? address,
     required UserRole role,
     String? workerSkill,
   }) async {
@@ -200,6 +204,7 @@ class AuthService extends ChangeNotifier {
             email: email.trim(),
             name: name.trim(),
             mobile: mobile.trim(),
+            address: address?.trim(),
             role: role,
             workerSkill: workerSkill,
             createdAt: DateTime.now(),
@@ -229,6 +234,7 @@ class AuthService extends ChangeNotifier {
           email: email.trim(),
           name: name.trim(),
           mobile: mobile.trim(),
+          address: address?.trim(),
           role: role,
           workerSkill: workerSkill,
           createdAt: DateTime.now(),

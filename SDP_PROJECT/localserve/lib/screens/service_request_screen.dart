@@ -33,6 +33,17 @@ class _ServiceRequestScreenState
   String priority = 'Medium';
   bool reminder = false;
   DateTime? dueDate;
+  late String selectedService;
+
+  final List<String> serviceCategories = const [
+    'Plumbing',
+    'Painting',
+    'Electrical',
+    'Carpentry',
+    'Cleaning',
+    'Appliance Repair',
+    'General Service',
+  ];
 
   @override
   void initState() {
@@ -40,6 +51,11 @@ class _ServiceRequestScreenState
 
     final request = widget.existingRequest;
     final user = widget.currentUser;
+
+    selectedService = request?.service ??
+        (serviceCategories.contains(widget.selectedService)
+            ? widget.selectedService
+            : 'Plumbing');
 
     nameController = TextEditingController(
       text: request?.name ?? user?.name ?? '',
@@ -54,7 +70,7 @@ class _ServiceRequestScreenState
     );
 
     addressController = TextEditingController(
-      text: request?.address ?? '',
+      text: request?.address ?? user?.address ?? '',
     );
 
     descriptionController = TextEditingController(
@@ -91,7 +107,7 @@ class _ServiceRequestScreenState
               .microsecondsSinceEpoch
               .toString(),
 
-      service: widget.selectedService,
+      service: selectedService,
 
       name: nameController.text.trim(),
 
@@ -223,8 +239,8 @@ class _ServiceRequestScreenState
         appBar: AppBar(
           title: Text(
             isEditing
-                ? 'Edit Request'
-                : '${widget.selectedService} Request',
+                ? 'Edit $selectedService Request'
+                : '$selectedService Request',
           ),
         ),
 
@@ -238,8 +254,8 @@ class _ServiceRequestScreenState
               // TITLE
               Text(
                 isEditing
-                    ? 'Edit ${widget.selectedService} Request'
-                    : 'Request ${widget.selectedService} Service',
+                    ? 'Edit $selectedService Request'
+                    : 'Request $selectedService Service',
 
                 style: Theme.of(context)
                     .textTheme
@@ -257,7 +273,99 @@ class _ServiceRequestScreenState
                     : 'Enter your details to request a local professional.',
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+
+              if (widget.currentUser != null && !isEditing)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Phone number and address auto-filled from your registered account.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 8),
+
+              // SERVICE TYPE SELECTOR
+              DropdownButtonFormField<String>(
+                initialValue: serviceCategories.contains(selectedService) ? selectedService : 'Plumbing',
+                decoration: const InputDecoration(
+                  labelText: 'Service Type',
+                  hintText: 'Select required service (Plumbing, Painting, etc.)',
+                  prefixIcon: Icon(Icons.handyman_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: serviceCategories.map((service) {
+                  IconData icon;
+                  switch (service) {
+                    case 'Plumbing':
+                      icon = Icons.plumbing;
+                      break;
+                    case 'Painting':
+                      icon = Icons.format_paint;
+                      break;
+                    case 'Electrical':
+                      icon = Icons.electrical_services;
+                      break;
+                    case 'Carpentry':
+                      icon = Icons.carpenter;
+                      break;
+                    case 'Cleaning':
+                      icon = Icons.cleaning_services;
+                      break;
+                    case 'Appliance Repair':
+                      icon = Icons.home_repair_service;
+                      break;
+                    default:
+                      icon = Icons.build_circle_outlined;
+                  }
+                  return DropdownMenuItem<String>(
+                    value: service,
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 10),
+                        Text(service, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      selectedService = val;
+                    });
+                  }
+                },
+                validator: (val) =>
+                    (val == null || val.isEmpty) ? 'Please select a service type' : null,
+              ),
+
+              const SizedBox(height: 16),
 
               // NAME
               TextFormField(

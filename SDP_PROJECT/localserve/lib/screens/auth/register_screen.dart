@@ -15,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
+  final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
 
   UserRole _selectedRole = UserRole.customer;
@@ -37,6 +38,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _mobileController.dispose();
+    _addressController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -55,12 +57,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: _passwordController.text,
         name: _nameController.text.trim(),
         mobile: _mobileController.text.trim(),
+        address: _addressController.text.trim(),
         role: _selectedRole,
         workerSkill: _selectedRole == UserRole.worker ? _workerSkill : null,
       );
 
       if (mounted) {
-        Navigator.pop(context); // Pop back to auth wrapper / dashboard
+        // Show completion confirmation dialog showing registered address & phone number
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+            title: const Text('Registration Complete'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome, ${_nameController.text.trim()}!',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Your registered contact & address details:',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.phone, size: 18, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Phone: ${_mobileController.text.trim()}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on, size: 18, color: Colors.redAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Address: ${_addressController.text.trim()}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Continue to LocalServe'),
+              ),
+            ],
+          ),
+        );
+
+        if (mounted) {
+          Navigator.pop(context); // Pop back to auth wrapper / dashboard
+        }
       }
     } catch (e) {
       setState(() {
@@ -218,11 +281,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
                         labelText: 'Mobile Number',
+                        hintText: 'Enter 10-digit mobile number',
                         prefixIcon: Icon(Icons.phone_outlined),
                         border: OutlineInputBorder(),
                       ),
                       validator: (val) => (val == null || val.trim().length < 10)
                           ? 'Please enter a valid 10-digit mobile number'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Address
+                    TextFormField(
+                      controller: _addressController,
+                      keyboardType: TextInputType.streetAddress,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Address',
+                        hintText: 'Enter complete house/street address',
+                        prefixIcon: Icon(Icons.location_on_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Please enter your address'
                           : null,
                     ),
                     const SizedBox(height: 16),
