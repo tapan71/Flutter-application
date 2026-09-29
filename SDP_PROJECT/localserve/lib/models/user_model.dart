@@ -34,6 +34,11 @@ class AppUser {
   final String? workerSkill;
   final bool isApproved;
   final DateTime? createdAt;
+  final String? avatarUrl;
+  final String? bio;
+  final double rating;
+  final int ratingCount;
+  final int completedJobsCount;
 
   const AppUser({
     required this.uid,
@@ -47,6 +52,11 @@ class AppUser {
     this.workerSkill,
     this.isApproved = true,
     this.createdAt,
+    this.avatarUrl,
+    this.bio,
+    this.rating = 4.8,
+    this.ratingCount = 0,
+    this.completedJobsCount = 0,
   });
 
   bool get isCustomer => role == UserRole.customer;
@@ -67,6 +77,11 @@ class AppUser {
       'workerSkill': workerSkill,
       'isApproved': isApproved,
       'createdAt': createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+      'avatarUrl': avatarUrl,
+      'bio': bio,
+      'rating': rating,
+      'ratingCount': ratingCount,
+      'completedJobsCount': completedJobsCount,
     };
   }
 
@@ -85,6 +100,13 @@ class AppUser {
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString())
           : null,
+      avatarUrl: map['avatarUrl'] as String?,
+      bio: map['bio'] as String?,
+      rating: map['rating'] != null ? (map['rating'] as num).toDouble() : 4.8,
+      ratingCount: map['ratingCount'] != null ? (map['ratingCount'] as num).toInt() : 0,
+      completedJobsCount: map['completedJobsCount'] != null
+          ? (map['completedJobsCount'] as num).toInt()
+          : 0,
     );
   }
 
@@ -100,6 +122,11 @@ class AppUser {
     String? workerSkill,
     bool? isApproved,
     DateTime? createdAt,
+    String? avatarUrl,
+    String? bio,
+    double? rating,
+    int? ratingCount,
+    int? completedJobsCount,
   }) {
     return AppUser(
       uid: uid ?? this.uid,
@@ -113,6 +140,11 @@ class AppUser {
       workerSkill: workerSkill ?? this.workerSkill,
       isApproved: isApproved ?? this.isApproved,
       createdAt: createdAt ?? this.createdAt,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      bio: bio ?? this.bio,
+      rating: rating ?? this.rating,
+      ratingCount: ratingCount ?? this.ratingCount,
+      completedJobsCount: completedJobsCount ?? this.completedJobsCount,
     );
   }
 }

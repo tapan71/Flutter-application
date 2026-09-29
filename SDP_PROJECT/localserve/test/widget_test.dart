@@ -4,8 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:localserve/main.dart';
 import 'package:localserve/models/user_model.dart';
 import 'package:localserve/services/auth_service.dart';
+import 'package:localserve/services/local_storage_service.dart';
 
 void main() {
+  setUp(() {
+    LocalStorageService().resetForTesting();
+  });
+
   testWidgets(
     'LocalServe displays LoginScreen when unauthenticated',
     (WidgetTester tester) async {
@@ -62,9 +67,9 @@ void main() {
     },
   );
 
-  testWidgets(
+  test(
     'Registered worker preserves Worker role upon login and routes to Worker Dashboard',
-    (WidgetTester tester) async {
+    () async {
       final auth = AuthService();
       const testEmail = 'carpenter.bob@example.com';
       const testPass = 'secret123';
@@ -89,6 +94,51 @@ void main() {
       await auth.signIn(email: testEmail, password: testPass);
       expect(auth.currentUser?.role, UserRole.worker);
       expect(auth.currentUser?.workerSkill, 'Carpentry');
+    },
+  );
+
+  testWidgets(
+    'Customer request auto-fills name, email, phone, and address by default and allows editing',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const LocalServeApp());
+      await tester.pumpAndSettle();
+
+      // Sign in as Customer demo
+      final customerChip = find.widgetWithText(ActionChip, 'Customer Demo');
+      await tester.ensureVisible(customerChip);
+      await tester.pumpAndSettle();
+      await tester.tap(customerChip);
+      await tester.pumpAndSettle();
+
+      // Click "Request Service"
+      final requestButton = find.widgetWithText(FilledButton, 'Request Service');
+      expect(requestButton, findsOneWidget);
+      await tester.ensureVisible(requestButton);
+      await tester.pumpAndSettle();
+      await tester.tap(requestButton);
+      await tester.pumpAndSettle();
+
+      // Verify ServiceRequestScreen is opened
+      expect(find.text('Plumbing Request'), findsOneWidget);
+      expect(find.text('Account Defaults Auto-filled'), findsOneWidget);
+
+      // Verify name is prefilled and can be changed
+      final nameFinder = find.widgetWithText(TextFormField, 'John Customer');
+      expect(nameFinder, findsOneWidget);
+      await tester.enterText(nameFinder, 'Jane Customer');
+      await tester.pumpAndSettle();
+      expect(find.text('Jane Customer'), findsOneWidget);
+
+      // Verify email and mobile are prefilled by default
+      final emailFinder = find.widgetWithText(TextFormField, 'customer@localserve.com');
+      await tester.ensureVisible(emailFinder);
+      await tester.pumpAndSettle();
+      expect(emailFinder, findsOneWidget);
+
+      final mobileFinder = find.widgetWithText(TextFormField, '9876543210');
+      await tester.ensureVisible(mobileFinder);
+      await tester.pumpAndSettle();
+      expect(mobileFinder, findsOneWidget);
     },
   );
 }

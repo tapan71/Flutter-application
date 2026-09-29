@@ -5,10 +5,14 @@ import 'package:provider/provider.dart';
 
 import 'services/auth_service.dart';
 import 'services/database_service.dart';
+import 'services/local_storage_service.dart';
 import 'screens/auth/auth_wrapper.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize local persistent storage
+  await LocalStorageService().init();
 
   // Initialize Firebase safely:
   // On Web, Firebase.initializeApp() requires explicit FirebaseOptions.

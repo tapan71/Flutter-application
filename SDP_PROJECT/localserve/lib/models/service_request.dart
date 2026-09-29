@@ -16,6 +16,10 @@ class ServiceRequest {
   final String? workerId;
   final String? workerName;
   final DateTime? createdAt;
+  final List<String> applicantWorkerIds;
+  final List<String> declinedWorkerIds;
+  final bool customerReviewed;
+  final bool workerReviewed;
 
   ServiceRequest({
     required this.id,
@@ -36,6 +40,10 @@ class ServiceRequest {
     this.workerId,
     this.workerName,
     this.createdAt,
+    this.applicantWorkerIds = const [],
+    this.declinedWorkerIds = const [],
+    this.customerReviewed = false,
+    this.workerReviewed = false,
   }) : status = status ?? (completed ? 'completed' : 'pending');
 
   bool get completed => status == 'completed';
@@ -66,6 +74,10 @@ class ServiceRequest {
     String? workerId,
     String? workerName,
     DateTime? createdAt,
+    List<String>? applicantWorkerIds,
+    List<String>? declinedWorkerIds,
+    bool? customerReviewed,
+    bool? workerReviewed,
   }) {
     String finalStatus = status ?? this.status;
     if (completed != null && status == null) {
@@ -90,6 +102,10 @@ class ServiceRequest {
       workerId: workerId ?? this.workerId,
       workerName: workerName ?? this.workerName,
       createdAt: createdAt ?? this.createdAt,
+      applicantWorkerIds: applicantWorkerIds ?? this.applicantWorkerIds,
+      declinedWorkerIds: declinedWorkerIds ?? this.declinedWorkerIds,
+      customerReviewed: customerReviewed ?? this.customerReviewed,
+      workerReviewed: workerReviewed ?? this.workerReviewed,
     );
   }
 
@@ -112,6 +128,10 @@ class ServiceRequest {
       'workerId': workerId,
       'workerName': workerName,
       'createdAt': createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+      'applicantWorkerIds': applicantWorkerIds,
+      'declinedWorkerIds': declinedWorkerIds,
+      'customerReviewed': customerReviewed,
+      'workerReviewed': workerReviewed,
     };
   }
 
@@ -141,6 +161,14 @@ class ServiceRequest {
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString())
           : null,
+      applicantWorkerIds: map['applicantWorkerIds'] != null
+          ? List<String>.from(map['applicantWorkerIds'] as List)
+          : const [],
+      declinedWorkerIds: map['declinedWorkerIds'] != null
+          ? List<String>.from(map['declinedWorkerIds'] as List)
+          : const [],
+      customerReviewed: map['customerReviewed'] as bool? ?? false,
+      workerReviewed: map['workerReviewed'] as bool? ?? false,
     );
   }
 }

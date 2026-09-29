@@ -8,6 +8,8 @@ import '../../services/database_service.dart';
 import '../../widgets/location_picker_screen.dart';
 import '../service_details_screen.dart';
 import '../history_screen.dart';
+import '../../widgets/notification_badge_button.dart';
+import '../../widgets/edit_profile_dialog.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -123,6 +125,20 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
     );
   }
 
+  bool _matchesWorkerSkill(AppUser worker, ServiceRequest req) {
+    final reqService = req.service.trim().toLowerCase();
+    // 1. General Service requests can be seen and accepted by ALL workers
+    if (reqService == 'general service' || reqService == 'general') return true;
+
+    // 2. Workers specializing in General Service or All can see all requests
+    if (worker.workerSkill == null || worker.workerSkill!.isEmpty) return true;
+    final skill = worker.workerSkill!.trim().toLowerCase();
+    if (skill == 'general service' || skill == 'all') return true;
+
+    // 3. Specific trade matching
+    return reqService == skill;
+  }
+
   Widget _buildWorkerLocationBanner(AppUser worker, ThemeData theme) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -199,13 +215,29 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
               ],
             ),
           ),
-          FilledButton.tonalIcon(
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            ),
-            onPressed: () => _updateWorkerLocation(worker),
-            icon: const Icon(Icons.edit_location_alt, size: 16),
-            label: Text(worker.hasLocation ? 'Update' : 'Set Pin'),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => _updateWorkerLocation(worker),
+                icon: const Icon(Icons.edit_location_alt, size: 14),
+                label: Text(worker.hasLocation ? 'Update Pin' : 'Set Pin', style: const TextStyle(fontSize: 11)),
+              ),
+              const SizedBox(height: 4),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => EditProfileDialog.show(context, user: worker),
+                icon: const Icon(Icons.edit, size: 14),
+                label: const Text('Edit Profile', style: TextStyle(fontSize: 11)),
+              ),
+            ],
           ),
         ],
       ),
@@ -242,6 +274,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
         actions: [
+          NotificationBadgeButton(user: worker),
+          IconButton(
+            tooltip: 'Edit Profile & Details',
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () => EditProfileDialog.show(context, user: worker),
+          ),
           IconButton(
             tooltip: 'All Requests History',
             icon: const Icon(Icons.history_rounded),
@@ -301,10 +339,13 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
               children: [
                 // TAB 1: Available Jobs (Pending)
                 StreamBuilder<List<ServiceRequest>>(
-                  stream: dbService.streamAvailableRequests(),
+                  stream: dbService.streamAvailableRequests(skill: worker.workerSkill),
                   builder: (context, snapshot) {
-                    final allPending = snapshot.data ??
+                    final rawPending = snapshot.data ??
                         dbService.allRequests.where((r) => r.status == 'pending').toList();
+
+                    // Strictly filter so only requests matching the worker's skill are shown
+                    final allPending = rawPending.where((r) => _matchesWorkerSkill(worker, r)).toList();
 
                     // Filter by 20 km if toggle is active and worker has location set
                     final requests = (_filterWithin20Km && worker.hasLocation)
@@ -317,7 +358,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
 
                     return Column(
                       children: [
-                        // Radius Filter & Information Header
+                        // Radius & Specialization Filter Header
                         Container(
                           margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -330,13 +371,36 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.radar, size: 18, color: theme.colorScheme.primary),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.primaryContainer,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.build_circle, size: 14, color: theme.colorScheme.onPrimaryContainer),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          worker.workerSkill?.isNotEmpty == true ? worker.workerSkill! : 'All Skills',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme.onPrimaryContainer,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                   const SizedBox(width: 8),
+                                  Icon(Icons.radar, size: 16, color: theme.colorScheme.primary),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    '20 km Service Radius',
+                                    '20 km',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       color: theme.colorScheme.primary,
                                     ),
                                   ),
@@ -413,18 +477,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                         const SizedBox(height: 12),
                                         Text(
                                           _filterWithin20Km
-                                              ? 'No requests within 20 km'
-                                              : 'No open requests right now',
+                                              ? 'No ${worker.workerSkill ?? "matching"} requests within 20 km'
+                                              : 'No open ${worker.workerSkill ?? "matching"} requests right now',
                                           style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
                                           ),
+                                          textAlign: TextAlign.center,
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
                                           _filterWithin20Km
-                                              ? 'There are no active customer requests within 20 km of your base location.'
-                                              : 'New customer requests will appear here in real-time.',
+                                              ? 'There are no active customer requests for ${worker.workerSkill ?? "your skill"} within 20 km of your base location.'
+                                              : 'New customer requests matching your skill (${worker.workerSkill ?? "General"}) will appear here in real-time.',
                                           style: const TextStyle(color: Colors.grey),
                                           textAlign: TextAlign.center,
                                         ),

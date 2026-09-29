@@ -2,11 +2,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:localserve/models/user_model.dart';
 import 'package:localserve/models/service_request.dart';
+import 'package:localserve/models/review_model.dart';
 import 'package:localserve/services/geocoding_service.dart';
 import 'package:localserve/services/auth_service.dart';
 import 'package:localserve/services/database_service.dart';
+import 'package:localserve/services/local_storage_service.dart';
 
 void main() {
+  setUp(() {
+    LocalStorageService().resetForTesting();
+  });
+
   group('OpenStreetMap & Nominatim Location Tests', () {
     test('LocationSearchResult parses Nominatim JSON response correctly', () {
       final json = {
@@ -179,6 +185,7 @@ void main() {
         workerId: workerInAhmedabad.uid,
         workerName: workerInAhmedabad.name,
         worker: workerInAhmedabad,
+        autoConfirm: true,
       );
 
       final acceptedReq1 = db.allRequests.firstWhere((r) => r.id == 'req_1');
@@ -227,5 +234,336 @@ void main() {
         ),
       );
     });
+
+    test('Worker specialization filters available service requests and blocks mismatching job acceptance', () async {
+      final db = DatabaseService();
+
+      // Create test requests
+      final plumbingReq = ServiceRequest(
+        id: 'spec_test_plumbing_1',
+        service: 'Plumbing',
+        name: 'Plumbing Customer',
+        email: 'pc@test.com',
+        mobile: '9898989898',
+        address: 'Ahmedabad',
+        latitude: 23.0225,
+        longitude: 72.5714,
+        priority: 'High',
+        reminder: false,
+        description: 'Leaking bathroom pipe',
+        status: 'pending',
+      );
+      final electricalReq = ServiceRequest(
+        id: 'spec_test_electrical_1',
+        service: 'Electrical',
+        name: 'Electrical Customer',
+        email: 'ec@test.com',
+        mobile: '9797979797',
+        address: 'Ahmedabad',
+        latitude: 23.0230,
+        longitude: 72.5720,
+        priority: 'Medium',
+        reminder: false,
+        description: 'Bedroom light socket short circuit',
+        status: 'pending',
+      );
+      final generalReq = ServiceRequest(
+        id: 'spec_test_general_1',
+        service: 'General Service',
+        name: 'General Customer',
+        email: 'gc@test.com',
+        mobile: '9696969696',
+        address: 'Ahmedabad',
+        latitude: 23.0240,
+        longitude: 72.5730,
+        priority: 'Low',
+        reminder: false,
+        description: 'Need general assistance with household fixture assembly',
+        status: 'pending',
+      );
+
+      await db.addRequest(plumbingReq);
+      await db.addRequest(electricalReq);
+      await db.addRequest(generalReq);
+
+      // Stream with skill: 'Plumbing' must return Plumbing requests AND General Service requests
+      final plumbingStreamList = await db.streamAvailableRequests(skill: 'Plumbing').first;
+      expect(plumbingStreamList.any((r) => r.id == 'spec_test_plumbing_1'), isTrue);
+      expect(plumbingStreamList.any((r) => r.id == 'spec_test_general_1'), isTrue);
+      expect(plumbingStreamList.any((r) => r.id == 'spec_test_electrical_1'), isFalse);
+      for (final req in plumbingStreamList) {
+        final s = req.service.toLowerCase();
+        expect(s == 'plumbing' || s == 'general service', isTrue);
+      }
+
+      // Stream with skill: 'Electrical' must return Electrical requests AND General Service requests
+      final electricalStreamList = await db.streamAvailableRequests(skill: 'Electrical').first;
+      expect(electricalStreamList.any((r) => r.id == 'spec_test_electrical_1'), isTrue);
+      expect(electricalStreamList.any((r) => r.id == 'spec_test_general_1'), isTrue);
+      expect(electricalStreamList.any((r) => r.id == 'spec_test_plumbing_1'), isFalse);
+      for (final req in electricalStreamList) {
+        final s = req.service.toLowerCase();
+        expect(s == 'electrical' || s == 'general service', isTrue);
+      }
+
+      // Worker with 'Electrical' skill cannot accept plumbing request
+      const electricalWorker = AppUser(
+        uid: 'elec_worker_1',
+        email: 'elec@test.com',
+        name: 'Elec Worker',
+        mobile: '9876543211',
+        role: UserRole.worker,
+        workerSkill: 'Electrical',
+        latitude: 23.0225,
+        longitude: 72.5714,
+      );
+
+      expect(
+        () async => await db.acceptJob(
+          requestId: 'spec_test_plumbing_1',
+          workerId: electricalWorker.uid,
+          workerName: electricalWorker.name,
+          worker: electricalWorker,
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Specialization mismatch'),
+          ),
+        ),
+      );
+
+      // Worker with 'Plumbing' skill can accept plumbing request
+      const plumbingWorker = AppUser(
+        uid: 'plumb_worker_1',
+        email: 'plumb@test.com',
+        name: 'Plumbing Worker',
+        mobile: '9876543212',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+        latitude: 23.0225,
+        longitude: 72.5714,
+      );
+
+      await db.acceptJob(
+        requestId: 'spec_test_plumbing_1',
+        workerId: plumbingWorker.uid,
+        workerName: plumbingWorker.name,
+        worker: plumbingWorker,
+        autoConfirm: true,
+      );
+
+      final accepted = db.allRequests.firstWhere((r) => r.id == 'spec_test_plumbing_1');
+      expect(accepted.status, 'assigned');
+      expect(accepted.workerId, plumbingWorker.uid);
+
+      // ANY worker (such as electricalWorker) can accept a 'General Service' request!
+      await db.acceptJob(
+        requestId: 'spec_test_general_1',
+        workerId: electricalWorker.uid,
+        workerName: electricalWorker.name,
+        worker: electricalWorker,
+        autoConfirm: true,
+      );
+
+      final acceptedGeneral = db.allRequests.firstWhere((r) => r.id == 'spec_test_general_1');
+      expect(acceptedGeneral.status, 'assigned');
+      expect(acceptedGeneral.workerId, electricalWorker.uid);
+    });
+
+    test('Full workflow: Worker application notifications, customer profile check, worker confirmation/rejection, and mutual reviews', () async {
+      final db = DatabaseService();
+
+      const customerId = 'cust_flow_test';
+      const worker1Id = 'worker_flow_alex';
+      const worker2Id = 'worker_flow_david';
+      const requestId = 'req_flow_plumbing_1';
+
+      // 1. Create a customer request
+      final request = ServiceRequest(
+        id: requestId,
+        service: 'Plumbing',
+        name: 'Priya Patel',
+        email: 'priya@example.com',
+        mobile: '9898001122',
+        address: 'Satellite, Ahmedabad',
+        latitude: 23.0280,
+        longitude: 72.5070,
+        priority: 'High',
+        reminder: true,
+        description: 'Urgent kitchen pipe repair',
+        status: 'pending',
+        customerId: customerId,
+      );
+
+      await db.addRequest(request);
+
+      const worker1 = AppUser(
+        uid: worker1Id,
+        email: 'alex@example.com',
+        name: 'Alex Plumber',
+        mobile: '9123456780',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+        latitude: 23.0260,
+        longitude: 72.5060,
+        bio: 'Licensed plumber with 9+ years experience.',
+        rating: 4.9,
+        ratingCount: 15,
+      );
+
+      const worker2 = AppUser(
+        uid: worker2Id,
+        email: 'david@example.com',
+        name: 'David Mehta',
+        mobile: '9811223399',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+        latitude: 23.0290,
+        longitude: 72.5080,
+        bio: 'Experienced in bathroom pipe fittings.',
+        rating: 4.7,
+        ratingCount: 8,
+      );
+
+      // 2. Worker 1 accepts/applies for the request
+      await db.acceptJob(
+        requestId: requestId,
+        workerId: worker1Id,
+        workerName: worker1.name,
+        worker: worker1,
+        autoConfirm: false, // Awaits customer confirmation
+      );
+
+      // Customer and Worker 1 receive in-app notifications
+      final customerNotifsAfterW1 = db.getNotifications(customerId);
+      expect(customerNotifsAfterW1.any((n) => n.relatedUserId == worker1Id), isTrue);
+
+      final worker1Notifs = db.getNotifications(worker1Id);
+      expect(worker1Notifs.any((n) => n.requestId == requestId), isTrue);
+
+      // 3. Worker 2 also accepts/applies for the request
+      await db.acceptJob(
+        requestId: requestId,
+        workerId: worker2Id,
+        workerName: worker2.name,
+        worker: worker2,
+        autoConfirm: false,
+      );
+
+      final currentReq = db.allRequests.firstWhere((r) => r.id == requestId);
+      expect(currentReq.applicantWorkerIds, containsAll([worker1Id, worker2Id]));
+      expect(currentReq.status, 'pending');
+
+      // 4. Customer inspects worker profiles and reviews
+      final worker1Profile = await db.getUserById(worker1Id);
+      expect(worker1Profile?.name, 'Alex Plumber');
+
+      // 5. Customer confirms Worker 1:
+      // Worker 1 is confirmed and assigned; Worker 2 is rejected
+      await db.confirmWorker(
+        requestId: requestId,
+        workerId: worker1Id,
+        workerName: worker1.name,
+        customerId: customerId,
+      );
+
+      final confirmedReq = db.allRequests.firstWhere((r) => r.id == requestId);
+      expect(confirmedReq.status, 'assigned');
+      expect(confirmedReq.workerId, worker1Id);
+
+      // Worker 1 receives Job Confirmed notification
+      final w1NotifsAfterConfirm = db.getNotifications(worker1Id);
+      expect(w1NotifsAfterConfirm.any((n) => n.type == 'customer_accepted'), isTrue);
+
+      // Worker 2 receives Job Assigned to Another Worker notification (rejected)
+      final w2NotifsAfterConfirm = db.getNotifications(worker2Id);
+      expect(w2NotifsAfterConfirm.any((n) => n.type == 'worker_rejected'), isTrue);
+
+      // No 2 workers can do 1 job: a 3rd worker attempting to accept fails
+      const worker3 = AppUser(
+        uid: 'worker_3',
+        email: 'w3@example.com',
+        name: 'Worker Three',
+        mobile: '9000000000',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+        latitude: 23.0280,
+        longitude: 72.5070,
+      );
+
+      expect(
+        () async => await db.acceptJob(
+          requestId: requestId,
+          workerId: worker3.uid,
+          workerName: worker3.name,
+          worker: worker3,
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('already been confirmed and assigned'),
+          ),
+        ),
+      );
+
+      // 6. Complete the job
+      await db.updateStatus(requestId: requestId, newStatus: 'completed');
+      final completedReq = db.allRequests.firstWhere((r) => r.id == requestId);
+      expect(completedReq.completed, isTrue);
+
+      // Both receive notifications to review
+      expect(db.getNotifications(customerId).any((n) => n.type == 'job_completed'), isTrue);
+      expect(db.getNotifications(worker1Id).any((n) => n.type == 'job_completed'), isTrue);
+
+      // 7. Mutual Two-Way Reviews
+      // Customer reviews Worker 1
+      final customerReview = Review(
+        id: 'rev_cust_w1',
+        requestId: requestId,
+        service: 'Plumbing',
+        fromUserId: customerId,
+        fromUserName: 'Priya Patel',
+        fromUserRole: 'customer',
+        toUserId: worker1Id,
+        toUserName: worker1.name,
+        rating: 5.0,
+        comment: 'Excellent plumbing work! Fixed our leaking pipe under 30 minutes.',
+        createdAt: DateTime.now(),
+      );
+
+      await db.submitReview(customerReview);
+      final reqAfterCustReview = db.allRequests.firstWhere((r) => r.id == requestId);
+      expect(reqAfterCustReview.customerReviewed, isTrue);
+
+      // Worker 1 reviews Customer
+      final workerReview = Review(
+        id: 'rev_w1_cust',
+        requestId: requestId,
+        service: 'Plumbing',
+        fromUserId: worker1Id,
+        fromUserName: worker1.name,
+        fromUserRole: 'worker',
+        toUserId: customerId,
+        toUserName: 'Priya Patel',
+        rating: 5.0,
+        comment: 'Great customer, clear instructions and quick confirmation!',
+        createdAt: DateTime.now(),
+      );
+
+      await db.submitReview(workerReview);
+      final reqAfterWorkerReview = db.allRequests.firstWhere((r) => r.id == requestId);
+      expect(reqAfterWorkerReview.workerReviewed, isTrue);
+
+      // Check reviews stream
+      final w1Reviews = db.getReviewsForUser(worker1Id);
+      expect(w1Reviews.any((r) => r.id == 'rev_cust_w1'), isTrue);
+
+      final custReviews = db.getReviewsForUser(customerId);
+      expect(custReviews.any((r) => r.id == 'rev_w1_cust'), isTrue);
+    });
   });
 }
+

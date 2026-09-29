@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/service_request.dart';
 import '../models/user_model.dart';
+import '../services/auth_service.dart';
 import '../widgets/location_picker_screen.dart';
 import '../widgets/map_preview_card.dart';
 
@@ -39,6 +41,7 @@ class _ServiceRequestScreenState
   bool reminder = false;
   DateTime? dueDate;
   late String selectedService;
+  bool _didPrefillFromUser = false;
 
   final List<String> serviceCategories = const [
     'Plumbing',
@@ -91,6 +94,55 @@ class _ServiceRequestScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didPrefillFromUser && widget.existingRequest == null) {
+      _didPrefillFromUser = true;
+      final authUser = widget.currentUser ??
+          context.read<AuthService>().currentUser;
+      if (authUser != null) {
+        if (nameController.text.trim().isEmpty && authUser.name.isNotEmpty) {
+          nameController.text = authUser.name;
+        }
+        if (emailController.text.trim().isEmpty && authUser.email.isNotEmpty) {
+          emailController.text = authUser.email;
+        }
+        if (mobileController.text.trim().isEmpty && authUser.mobile.isNotEmpty) {
+          mobileController.text = authUser.mobile;
+        }
+        if (addressController.text.trim().isEmpty &&
+            authUser.address != null &&
+            authUser.address!.isNotEmpty) {
+          addressController.text = authUser.address!;
+        }
+        _selectedLatitude ??= authUser.latitude;
+        _selectedLongitude ??= authUser.longitude;
+      }
+    }
+  }
+
+  void _resetToAccountProfile() {
+    final activeUser = widget.currentUser ??
+        context.read<AuthService>().currentUser;
+    if (activeUser != null) {
+      setState(() {
+        nameController.text = activeUser.name;
+        emailController.text = activeUser.email;
+        mobileController.text = activeUser.mobile;
+        addressController.text = activeUser.address ?? '';
+        _selectedLatitude = activeUser.latitude;
+        _selectedLongitude = activeUser.longitude;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reset fields to default account profile details.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
   void dispose() {
     nameController.dispose();
     emailController.dispose();
@@ -131,6 +183,8 @@ class _ServiceRequestScreenState
     }
 
     final oldRequest = widget.existingRequest;
+    final activeUser = widget.currentUser ??
+        (mounted ? context.read<AuthService>().currentUser : null);
 
     final request = ServiceRequest(
       id: oldRequest?.id ??
@@ -161,7 +215,7 @@ class _ServiceRequestScreenState
       dueDate: dueDate,
 
       status: oldRequest?.status ?? 'pending',
-      customerId: oldRequest?.customerId ?? widget.currentUser?.uid,
+      customerId: oldRequest?.customerId ?? activeUser?.uid,
       workerId: oldRequest?.workerId,
       workerName: oldRequest?.workerName,
     );
@@ -310,36 +364,61 @@ class _ServiceRequestScreenState
 
               const SizedBox(height: 16),
 
-              if (widget.currentUser != null && !isEditing)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+              if (!isEditing)
+                Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Phone number and address auto-filled from your registered account.',
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.verified_user_outlined,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Account Defaults Auto-filled',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              icon: const Icon(Icons.restore, size: 14),
+                              label: const Text('Reset Defaults', style: TextStyle(fontSize: 11)),
+                              onPressed: _resetToAccountProfile,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Your name, email, mobile number, and address are pre-filled below. You can change or edit any details before submitting.',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.85),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
 
@@ -347,6 +426,7 @@ class _ServiceRequestScreenState
 
               // SERVICE TYPE SELECTOR
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: serviceCategories.contains(selectedService) ? selectedService : 'Plumbing',
                 decoration: const InputDecoration(
                   labelText: 'Service Type',
@@ -405,23 +485,18 @@ class _ServiceRequestScreenState
               // NAME
               TextFormField(
                 controller: nameController,
-
-                textInputAction:
-                TextInputAction.next,
-
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Name',
-                  hintText: 'Enter your name',
+                  hintText: 'Enter contact name',
                   prefixIcon: Icon(Icons.person),
+                  helperText: 'Default from your account (editable)',
                   border: OutlineInputBorder(),
                 ),
-
                 validator: (value) {
-                  if (value == null ||
-                      value.trim().isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Name is required';
                   }
-
                   return null;
                 },
               ),
@@ -431,31 +506,22 @@ class _ServiceRequestScreenState
               // EMAIL
               TextFormField(
                 controller: emailController,
-
-                keyboardType:
-                TextInputType.emailAddress,
-
-                textInputAction:
-                TextInputAction.next,
-
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Email',
-                  hintText: 'Enter your email',
+                  hintText: 'Enter contact email for updates',
                   prefixIcon: Icon(Icons.email),
+                  helperText: 'Default from your account (editable)',
                   border: OutlineInputBorder(),
                 ),
-
                 validator: (value) {
-                  if (value == null ||
-                      value.trim().isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Email is required';
                   }
-
-                  if (!value.contains('@') ||
-                      !value.contains('.')) {
+                  if (!value.contains('@') || !value.contains('.')) {
                     return 'Enter a valid email';
                   }
-
                   return null;
                 },
               ),
@@ -465,36 +531,26 @@ class _ServiceRequestScreenState
               // MOBILE
               TextFormField(
                 controller: mobileController,
-
-                keyboardType:
-                TextInputType.phone,
-
-                textInputAction:
-                TextInputAction.next,
-
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Mobile Number',
                   hintText: 'Enter 10 digit mobile number',
                   prefixIcon: Icon(Icons.phone),
+                  helperText: 'Default from your account (editable)',
                   border: OutlineInputBorder(),
                 ),
-
                 validator: (value) {
-                  if (value == null ||
-                      value.trim().isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Mobile number is required';
                   }
-
                   final mobile = value.trim();
-
                   if (mobile.length != 10) {
                     return 'Enter 10 digit mobile number';
                   }
-
                   if (int.tryParse(mobile) == null) {
                     return 'Enter numbers only';
                   }
-
                   return null;
                 },
               ),
@@ -507,8 +563,9 @@ class _ServiceRequestScreenState
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: 'Address',
-                  hintText: 'Enter your address or pick on map',
+                  hintText: 'Enter service address or pick on map',
                   prefixIcon: const Icon(Icons.location_on),
+                  helperText: 'Default from your account (editable or pick on map)',
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.map_outlined, color: Colors.blueAccent),
                     tooltip: 'Pick location on OpenStreetMap',

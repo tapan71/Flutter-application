@@ -8,6 +8,8 @@ import 'service_request_screen.dart';
 import 'service_details_screen.dart';
 import 'history_screen.dart';
 import '../widgets/location_picker_screen.dart';
+import '../widgets/notification_badge_button.dart';
+import '../widgets/edit_profile_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,9 +25,39 @@ class _HomeScreenState extends State<HomeScreen> {
   // Selected filter
   String selectedFilter = 'All';
 
-  // CREATE and EDIT
+  // Services list
+  final List<String> services = [
+    'Plumbing',
+    'Electrical',
+    'Carpentry',
+    'Cleaning',
+    'Painting',
+    'Appliance Repair',
+  ];
+
+  // Helper icon for services
+  IconData _getServiceIcon(String service) {
+    switch (service.toLowerCase()) {
+      case 'plumbing':
+        return Icons.plumbing;
+      case 'electrical':
+        return Icons.electrical_services;
+      case 'carpentry':
+        return Icons.carpenter;
+      case 'cleaning':
+        return Icons.cleaning_services;
+      case 'painting':
+        return Icons.format_paint;
+      case 'appliance repair':
+        return Icons.home_repair_service;
+      default:
+        return Icons.handyman;
+    }
+  }
+
+  // OPEN SERVICE REQUEST SCREEN
   Future<void> openServiceRequest({
-    String service = 'General Service',
+    String? service,
     ServiceRequest? existingRequest,
   }) async {
     final authService = context.read<AuthService>();
@@ -36,56 +68,95 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ServiceRequestScreen(
-          selectedService: service,
+          selectedService: service ?? 'Plumbing',
           existingRequest: existingRequest,
           currentUser: user,
         ),
       ),
     );
 
-    if (!mounted || result == null) {
-      return;
-    }
-
-    if (existingRequest == null) {
-      await dbService.addRequest(result);
-    } else {
-      await dbService.updateRequest(result);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            existingRequest == null
-                ? 'Service request submitted successfully'
-                : 'Service request updated',
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
+    if (result != null && mounted) {
+      if (existingRequest != null) {
+        await dbService.updateRequest(result);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Service request updated successfully.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        await dbService.addRequest(result);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Request for ${result.service} submitted successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
     }
   }
 
-  // DELETE
-  Future<void> deleteRequest(ServiceRequest request) async {
-    final dbService = context.read<DatabaseService>();
-
+  // CANCEL REQUEST WITH CONFIRMATION
+  Future<void> handleCancelRequest(ServiceRequest request) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.cancel_outlined, size: 44, color: Colors.red),
+        title: const Text('Cancel Service Request?'),
+        content: Text(
+          'Are you sure you want to cancel your ${request.service} request?\n\n'
+          '${request.workerName != null ? "Assigned worker (${request.workerName}) will be notified immediately." : "Any applied workers will be notified."}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep Request'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes, Cancel Request'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      final dbService = context.read<DatabaseService>();
+      await dbService.cancelRequest(requestId: request.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Service request cancelled.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  // DELETE REQUEST (PERMANENT)
+  Future<void> deleteRequest(ServiceRequest request) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Delete Request?'),
-          content: Text(
-            'Are you sure you want to cancel the ${request.service} request?',
+          content: const Text(
+            'Are you sure you want to permanently remove this request from your account?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('Delete'),
             ),
           ],
@@ -97,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final dbService = context.read<DatabaseService>();
     await dbService.deleteRequest(request.id);
 
     if (mounted) {
@@ -106,16 +178,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-  }
-
-  // TOGGLE STATUS
-  Future<void> toggleCompleted(ServiceRequest request) async {
-    final dbService = context.read<DatabaseService>();
-    final newStatus = request.completed ? 'pending' : 'completed';
-    await dbService.updateStatus(
-      requestId: request.id,
-      newStatus: newStatus,
-    );
   }
 
   @override
@@ -144,14 +206,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   request.description.toLowerCase().contains(query);
 
           final matchesFilter = selectedFilter == 'All' ||
-              (selectedFilter == 'Pending' && !request.completed) ||
-              (selectedFilter == 'Completed' && request.completed);
+              (selectedFilter == 'Pending' && request.status == 'pending') ||
+              (selectedFilter == 'Assigned' &&
+                  (request.status == 'assigned' || request.status == 'in_progress')) ||
+              (selectedFilter == 'Completed' &&
+                  (request.status == 'completed' || request.completed)) ||
+              (selectedFilter == 'Cancelled' && request.status == 'cancelled');
 
           return matchesSearch && matchesFilter;
         }).toList();
 
-        final completedCount =
-            allCustomerRequests.where((request) => request.completed).length;
+        final completedCount = allCustomerRequests
+            .where((request) => request.completed || request.status == 'completed')
+            .length;
 
         return Scaffold(
           appBar: AppBar(
@@ -169,67 +236,85 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              NotificationBadgeButton(user: user),
               IconButton(
-                tooltip: 'Service History',
-                icon: const Icon(Icons.history_rounded),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => HistoryScreen(currentUser: user),
-                    ),
-                  );
-                },
-              ),
-              IconButton(
-                tooltip: 'Sign Out',
                 icon: const Icon(Icons.logout),
+                tooltip: 'Sign Out',
                 onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Sign Out'),
-                      content: const Text('Are you sure you want to log out?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Sign Out'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    await authService.signOut();
-                  }
+                  await authService.signOut();
                 },
               ),
             ],
           ),
-
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final horizontalPadding =
-                  constraints.maxWidth > 600 ? 40.0 : 16.0;
-
-              return ListView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 16,
-                ),
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Heading
+                  // SEARCH
+                  TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Search services, details, or requests...',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        searchQuery = value;
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // BANNER
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        colors: [
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context).colorScheme.tertiary,
+                        ],
+                      ),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Find Local Home Services',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Verified local electricians, plumbers, carpenters & more.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // SECTION: POPULAR SERVICES
                   const Text(
-                    'Find Local Home Services',
+                    'Select a Service',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   const Text(
                     'Choose a service and request a trusted local professional.',
                     style: TextStyle(color: Colors.grey),
@@ -270,21 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.green.shade300),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                                child: Text(
-                                  'Customer Account',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.green.shade800,
-                                  ),
-                                ),
+                                icon: const Icon(Icons.edit, size: 14),
+                                label: const Text('Edit Profile', style: TextStyle(fontSize: 12)),
+                                onPressed: () => EditProfileDialog.show(context, user: user),
                               ),
                             ],
                           ),
@@ -324,7 +402,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 icon: const Icon(Icons.edit_location_alt, size: 16),
                                 label: Text(user.hasLocation ? 'Edit Map' : 'Set on Map'),
                                 onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(context);
                                   final result = await Navigator.push<LocationPickerResult>(
                                     context,
                                     MaterialPageRoute(
@@ -350,14 +427,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                       longitude: result.longitude,
                                       address: result.address,
                                     );
-                                    if (mounted) {
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text('Home location saved: ${result.address}'),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    }
                                   }
                                 },
                               ),
@@ -370,33 +439,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 16),
 
-                  // SEARCH
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Search your requests...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: searchQuery.isNotEmpty
-                          ? IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  searchQuery = '';
-                                });
-                              },
-                              icon: const Icon(Icons.clear),
-                            )
-                          : null,
-                      border: const OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        searchQuery = value;
-                      });
-                    },
+                  // SERVICE CHIPS / BUTTONS
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: services.map((service) {
+                      return ActionChip(
+                        avatar: Icon(_getServiceIcon(service), size: 18),
+                        label: Text(service),
+                        onPressed: () => openServiceRequest(service: service),
+                      );
+                    }).toList(),
                   ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 20),
 
-                  // FILTER
+                  // FILTER DROPDOWN
                   DropdownButtonFormField<String>(
                     initialValue: selectedFilter,
                     decoration: const InputDecoration(
@@ -404,10 +462,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'All', child: Text('All')),
-                      DropdownMenuItem(value: 'Pending', child: Text('Pending')),
-                      DropdownMenuItem(
-                          value: 'Completed', child: Text('Completed')),
+                      DropdownMenuItem(value: 'All', child: Text('All Requests')),
+                      DropdownMenuItem(value: 'Pending', child: Text('Pending (Waiting for Worker)')),
+                      DropdownMenuItem(value: 'Assigned', child: Text('Assigned / In Progress')),
+                      DropdownMenuItem(value: 'Completed', child: Text('Completed')),
+                      DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -508,7 +567,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               allCustomerRequests.isEmpty
                                   ? 'You have not submitted any service requests yet.'
-                                  : 'No matching requests found.',
+                                  : 'No matching requests found for "$selectedFilter".',
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
@@ -531,29 +590,42 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: visibleRequests.length,
                       itemBuilder: (context, index) {
                         final request = visibleRequests[index];
-                        final isDone = request.completed;
+                        final isDone = request.completed || request.status == 'completed';
+                        final isCancelled = request.status == 'cancelled';
+
+                        Color badgeColor = Colors.orange;
+                        String statusLabel = 'PENDING';
+                        if (isCancelled) {
+                          badgeColor = Colors.red;
+                          statusLabel = 'CANCELLED';
+                        } else if (isDone) {
+                          badgeColor = Colors.green;
+                          statusLabel = 'COMPLETED';
+                        } else if (request.status == 'in_progress') {
+                          badgeColor = Colors.teal;
+                          statusLabel = 'IN PROGRESS';
+                        } else if (request.status == 'assigned') {
+                          badgeColor = Colors.blue;
+                          statusLabel = 'ASSIGNED';
+                        } else if (request.applicantWorkerIds.isNotEmpty) {
+                          badgeColor = Colors.purple;
+                          statusLabel = 'APPLICANT READY';
+                        }
 
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: isDone
-                                  ? Colors.green.shade100
-                                  : Colors.blue.shade100,
+                              backgroundColor: badgeColor.withValues(alpha: 0.15),
                               child: Icon(
-                                isDone ? Icons.check : Icons.build,
-                                color: isDone
-                                    ? Colors.green.shade800
-                                    : Colors.blue.shade800,
+                                _getServiceIcon(request.service),
+                                color: badgeColor,
                               ),
                             ),
                             title: Text(
                               request.service,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                decoration: isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
                               ),
                             ),
                             subtitle: Column(
@@ -562,19 +634,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   '${request.priority} priority • '
-                                  '${request.workerName != null ? "Assigned to: ${request.workerName}" : "Waiting for worker"}',
+                                  '${request.workerName != null ? "Worker: ${request.workerName}" : "Waiting for worker"}',
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Status: ${request.status.toUpperCase()}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDone
-                                        ? Colors.green.shade800
-                                        : (request.status == 'assigned'
-                                            ? Colors.blue.shade800
-                                            : Colors.orange.shade800),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: badgeColor.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Text(
+                                    statusLabel,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      color: badgeColor,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -588,9 +664,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                     MaterialPageRoute(
                                       builder: (_) => ServiceDetailsScreen(
                                         request: request,
+                                        currentUser: user,
                                       ),
                                     ),
                                   );
+                                }
+                                if (value == 'cancel') {
+                                  handleCancelRequest(request);
                                 }
                                 if (value == 'map' && request.hasLocation) {
                                   Navigator.push(
@@ -620,29 +700,46 @@ class _HomeScreenState extends State<HomeScreen> {
                                   value: 'view',
                                   child: Text('View Details'),
                                 ),
+                                if (!isDone && !isCancelled)
+                                  const PopupMenuItem(
+                                    value: 'cancel',
+                                    child: Text('Cancel Request', style: TextStyle(color: Colors.red)),
+                                  ),
                                 if (request.hasLocation)
                                   const PopupMenuItem(
                                     value: 'map',
                                     child: Text('View on Map'),
                                   ),
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('Edit'),
-                                ),
+                                if (!isDone && !isCancelled)
+                                  const PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Edit'),
+                                  ),
                                 const PopupMenuItem(
                                   value: 'delete',
-                                  child: Text('Cancel/Delete'),
+                                  child: Text('Delete Permanently'),
                                 ),
                               ],
                             ),
-                            onTap: () => toggleCompleted(request),
+                            onTap: () {
+                              // Tapping always opens the full details screen
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ServiceDetailsScreen(
+                                    request: request,
+                                    currentUser: user,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         );
                       },
                     ),
                 ],
-              );
-            },
+              ),
+            ),
           ),
         );
       },
