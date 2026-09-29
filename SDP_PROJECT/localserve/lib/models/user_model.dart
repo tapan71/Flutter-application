@@ -28,6 +28,8 @@ class AppUser {
   final String name;
   final String mobile;
   final String? address;
+  final double? latitude;
+  final double? longitude;
   final UserRole role;
   final String? workerSkill;
   final bool isApproved;
@@ -39,6 +41,8 @@ class AppUser {
     required this.name,
     required this.mobile,
     this.address,
+    this.latitude,
+    this.longitude,
     required this.role,
     this.workerSkill,
     this.isApproved = true,
@@ -48,6 +52,8 @@ class AppUser {
   bool get isCustomer => role == UserRole.customer;
   bool get isWorker => role == UserRole.worker;
 
+  bool get hasLocation => latitude != null && longitude != null;
+
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -55,6 +61,8 @@ class AppUser {
       'name': name,
       'mobile': mobile,
       'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
       'role': role.name,
       'workerSkill': workerSkill,
       'isApproved': isApproved,
@@ -69,6 +77,8 @@ class AppUser {
       name: map['name'] ?? '',
       mobile: map['mobile'] ?? '',
       address: map['address'] as String?,
+      latitude: map['latitude'] != null ? (map['latitude'] as num).toDouble() : null,
+      longitude: map['longitude'] != null ? (map['longitude'] as num).toDouble() : null,
       role: UserRole.fromString(map['role'] as String?),
       workerSkill: map['workerSkill'] as String?,
       isApproved: map['isApproved'] as bool? ?? true,
@@ -84,6 +94,8 @@ class AppUser {
     String? name,
     String? mobile,
     String? address,
+    double? latitude,
+    double? longitude,
     UserRole? role,
     String? workerSkill,
     bool? isApproved,
@@ -95,6 +107,8 @@ class AppUser {
       name: name ?? this.name,
       mobile: mobile ?? this.mobile,
       address: address ?? this.address,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       role: role ?? this.role,
       workerSkill: workerSkill ?? this.workerSkill,
       isApproved: isApproved ?? this.isApproved,

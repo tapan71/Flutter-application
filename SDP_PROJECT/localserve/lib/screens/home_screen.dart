@@ -7,6 +7,7 @@ import '../services/database_service.dart';
 import 'service_request_screen.dart';
 import 'service_details_screen.dart';
 import 'history_screen.dart';
+import '../widgets/location_picker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -298,22 +299,70 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ],
                           ),
-                          if (user.address != null && user.address!.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.location_on_outlined, size: 16, color: Colors.redAccent),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    user.address!,
-                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                  ),
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.location_on_outlined, size: 16, color: Colors.redAccent),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  user.address != null && user.address!.isNotEmpty
+                                      ? user.address!
+                                      : 'No saved address (Tap to set on map)',
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(width: 4),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.edit_location_alt, size: 16),
+                                label: Text(user.hasLocation ? 'Edit Map' : 'Set on Map'),
+                                onPressed: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  final result = await Navigator.push<LocationPickerResult>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LocationPickerScreen(
+                                        initialLatitude: user.latitude,
+                                        initialLongitude: user.longitude,
+                                        initialAddress: user.address,
+                                        title: 'Set Default Home Location',
+                                        confirmButtonText: 'Save Home Location',
+                                      ),
+                                    ),
+                                  );
+
+                                  if (result != null && mounted) {
+                                    await authService.updateCurrentUserLocation(
+                                      latitude: result.latitude,
+                                      longitude: result.longitude,
+                                      address: result.address,
+                                    );
+                                    await dbService.updateUserLocation(
+                                      uid: user.uid,
+                                      latitude: result.latitude,
+                                      longitude: result.longitude,
+                                      address: result.address,
+                                    );
+                                    if (mounted) {
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text('Home location saved: ${result.address}'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -543,6 +592,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   );
                                 }
+                                if (value == 'map' && request.hasLocation) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LocationPickerScreen(
+                                        initialLatitude: request.latitude,
+                                        initialLongitude: request.longitude,
+                                        initialAddress: request.address,
+                                        title: '${request.service} Location',
+                                      ),
+                                    ),
+                                  );
+                                }
                                 if (value == 'edit') {
                                   openServiceRequest(
                                     service: request.service,
@@ -553,16 +615,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                   deleteRequest(request);
                                 }
                               },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem(
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
                                   value: 'view',
                                   child: Text('View Details'),
                                 ),
-                                PopupMenuItem(
+                                if (request.hasLocation)
+                                  const PopupMenuItem(
+                                    value: 'map',
+                                    child: Text('View on Map'),
+                                  ),
+                                const PopupMenuItem(
                                   value: 'edit',
                                   child: Text('Edit'),
                                 ),
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'delete',
                                   child: Text('Cancel/Delete'),
                                 ),

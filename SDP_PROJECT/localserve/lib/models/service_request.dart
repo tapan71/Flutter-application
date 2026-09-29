@@ -5,6 +5,8 @@ class ServiceRequest {
   final String email;
   final String mobile;
   final String address;
+  final double? latitude;
+  final double? longitude;
   final String priority;
   final bool reminder;
   final String description;
@@ -22,6 +24,8 @@ class ServiceRequest {
     required this.email,
     required this.mobile,
     required this.address,
+    this.latitude,
+    this.longitude,
     required this.priority,
     required this.reminder,
     required this.description,
@@ -41,6 +45,8 @@ class ServiceRequest {
   bool get isInProgress => status == 'in_progress';
   bool get isCancelled => status == 'cancelled';
 
+  bool get hasLocation => latitude != null && longitude != null;
+
   ServiceRequest copyWith({
     String? id,
     String? service,
@@ -48,6 +54,8 @@ class ServiceRequest {
     String? email,
     String? mobile,
     String? address,
+    double? latitude,
+    double? longitude,
     String? priority,
     bool? reminder,
     String? description,
@@ -71,6 +79,8 @@ class ServiceRequest {
       email: email ?? this.email,
       mobile: mobile ?? this.mobile,
       address: address ?? this.address,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       priority: priority ?? this.priority,
       reminder: reminder ?? this.reminder,
       description: description ?? this.description,
@@ -91,6 +101,8 @@ class ServiceRequest {
       'email': email,
       'mobile': mobile,
       'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
       'priority': priority,
       'reminder': reminder,
       'description': description,
@@ -114,6 +126,8 @@ class ServiceRequest {
       email: map['email'] ?? '',
       mobile: map['mobile'] ?? '',
       address: map['address'] ?? '',
+      latitude: map['latitude'] != null ? (map['latitude'] as num).toDouble() : null,
+      longitude: map['longitude'] != null ? (map['longitude'] as num).toDouble() : null,
       priority: map['priority'] ?? 'Medium',
       reminder: map['reminder'] as bool? ?? false,
       description: map['description'] ?? '',

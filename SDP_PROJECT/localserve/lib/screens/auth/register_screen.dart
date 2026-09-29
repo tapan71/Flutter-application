@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/geocoding_service.dart';
+import '../../widgets/location_picker_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -23,6 +25,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
+  double? _selectedLatitude;
+  double? _selectedLongitude;
+  bool _isDetectingLocation = false;
+  bool _askedLocationPrompt = false;
+
   final List<String> _serviceCategories = [
     'Plumbing',
     'Electrical',
@@ -32,6 +39,113 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'Appliance Repair',
     'General Service',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _promptForDefaultLocation();
+    });
+  }
+
+  Future<void> _promptForDefaultLocation() async {
+    if (!mounted || _askedLocationPrompt || _addressController.text.isNotEmpty) return;
+    _askedLocationPrompt = true;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => AlertDialog(
+        icon: const Icon(Icons.my_location, size: 40, color: Colors.blue),
+        title: const Text('Use Current Location as Address?'),
+        content: const Text(
+          'LocalServe can automatically detect your current location and use it as your default address via OpenStreetMap.\n\n'
+          'If you accept, your address and map coordinates will be filled automatically. You can also decline and type your address manually.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text("No, I'll Type Manually"),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            icon: const Icon(Icons.check),
+            label: const Text('Accept & Use Location'),
+          ),
+        ],
+      ),
+    );
+
+    if (accepted == true && mounted) {
+      await _detectAndSetLocation();
+    }
+  }
+
+  Future<void> _detectAndSetLocation() async {
+    setState(() {
+      _isDetectingLocation = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await GeocodingService().detectCurrentLocation();
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _selectedLatitude = result.latitude;
+          _selectedLongitude = result.longitude;
+          _addressController.text = result.shortAddress;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 Location detected: ${result.shortAddress}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not auto-detect location. Please select on map or type manually.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error detecting location: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDetectingLocation = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _pickOnMap() async {
+    final result = await Navigator.push<LocationPickerResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLatitude: _selectedLatitude,
+          initialLongitude: _selectedLongitude,
+          initialAddress: _addressController.text,
+          title: 'Select Your Base Address',
+          confirmButtonText: 'Use This Address',
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _selectedLatitude = result.latitude;
+        _selectedLongitude = result.longitude;
+        _addressController.text = result.address;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -50,6 +164,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _errorMessage = null;
     });
 
+    // If user typed address manually without picking on map, attempt quick geocode
+    if (_selectedLatitude == null && _addressController.text.trim().isNotEmpty) {
+      try {
+        final geoMatch = await GeocodingService().forwardGeocode(_addressController.text.trim());
+        if (geoMatch != null) {
+          _selectedLatitude = geoMatch.latitude;
+          _selectedLongitude = geoMatch.longitude;
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
     final authService = context.read<AuthService>();
     try {
       await authService.signUp(
@@ -58,6 +184,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         name: _nameController.text.trim(),
         mobile: _mobileController.text.trim(),
         address: _addressController.text.trim(),
+        latitude: _selectedLatitude,
+        longitude: _selectedLongitude,
         role: _selectedRole,
         workerSkill: _selectedRole == UserRole.worker ? _workerSkill : null,
       );
@@ -110,6 +238,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                 ),
+                if (_selectedLatitude != null && _selectedLongitude != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.map_outlined, size: 16, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Map Coordinates: ${_selectedLatitude!.toStringAsFixed(4)}, ${_selectedLongitude!.toStringAsFixed(4)}',
+                        style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
             actions: [
@@ -291,19 +432,111 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Address
+                    // Address Header & Location Helper Actions
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Address & Location:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        if (_selectedLatitude != null && _selectedLongitude != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green.shade300),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 12, color: Colors.green),
+                                SizedBox(width: 4),
+                                Text(
+                                  'GPS Set',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Quick Action Buttons: Auto-detect or Pick on Map
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _isDetectingLocation ? null : _detectAndSetLocation,
+                          icon: _isDetectingLocation
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.my_location, size: 16),
+                          label: Text(
+                            _isDetectingLocation ? 'Detecting...' : 'Use Current Location',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _pickOnMap,
+                          icon: const Icon(Icons.map_outlined, size: 16),
+                          label: const Text('Pick on Map', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Address Text Field (Fully editable so user can type manually or refine)
                     TextFormField(
                       controller: _addressController,
                       keyboardType: TextInputType.streetAddress,
                       maxLines: 2,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Address',
-                        hintText: 'Enter complete house/street address',
-                        prefixIcon: Icon(Icons.location_on_outlined),
-                        border: OutlineInputBorder(),
+                        hintText: 'Enter complete house/street address or detect location',
+                        prefixIcon: const Icon(Icons.location_on_outlined),
+                        suffixIcon: _addressController.text.isNotEmpty
+                            ? IconButton(
+                                tooltip: 'Clear address',
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  setState(() {
+                                    _addressController.clear();
+                                    _selectedLatitude = null;
+                                    _selectedLongitude = null;
+                                  });
+                                },
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
+                        helperText: _selectedLatitude != null
+                            ? '📍 OpenStreetMap: ${_selectedLatitude!.toStringAsFixed(4)}, ${_selectedLongitude!.toStringAsFixed(4)}'
+                            : 'Type manually or tap "Use Current Location" / "Pick on Map"',
+                        helperStyle: TextStyle(
+                          fontSize: 11,
+                          color: _selectedLatitude != null ? Colors.green.shade800 : Colors.grey.shade600,
+                        ),
                       ),
                       validator: (val) => (val == null || val.trim().isEmpty)
-                          ? 'Please enter your address'
+                          ? 'Please enter your address or pick on map'
                           : null,
                     ),
                     const SizedBox(height: 16),

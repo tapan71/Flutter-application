@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/service_request.dart';
 import '../models/user_model.dart';
+import '../widgets/location_picker_screen.dart';
+import '../widgets/map_preview_card.dart';
 
 class ServiceRequestScreen extends StatefulWidget {
   const ServiceRequestScreen({
@@ -29,6 +31,9 @@ class _ServiceRequestScreenState
   late final TextEditingController mobileController;
   late final TextEditingController addressController;
   late final TextEditingController descriptionController;
+
+  double? _selectedLatitude;
+  double? _selectedLongitude;
 
   String priority = 'Medium';
   bool reminder = false;
@@ -77,6 +82,9 @@ class _ServiceRequestScreenState
       text: request?.description ?? '',
     );
 
+    _selectedLatitude = request?.latitude ?? user?.latitude;
+    _selectedLongitude = request?.longitude ?? user?.longitude;
+
     priority = request?.priority ?? 'Medium';
     reminder = request?.reminder ?? false;
     dueDate = request?.dueDate;
@@ -91,6 +99,29 @@ class _ServiceRequestScreenState
     descriptionController.dispose();
 
     super.dispose();
+  }
+
+  Future<void> _pickLocationOnMap() async {
+    final result = await Navigator.push<LocationPickerResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLatitude: _selectedLatitude,
+          initialLongitude: _selectedLongitude,
+          initialAddress: addressController.text,
+          title: 'Pick Service Location',
+          confirmButtonText: 'Use This Location',
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedLatitude = result.latitude;
+        _selectedLongitude = result.longitude;
+        addressController.text = result.address;
+      });
+    }
   }
 
   // CREATE / UPDATE REQUEST
@@ -116,6 +147,10 @@ class _ServiceRequestScreenState
       mobile: mobileController.text.trim(),
 
       address: addressController.text.trim(),
+
+      latitude: _selectedLatitude,
+
+      longitude: _selectedLongitude,
 
       priority: priority,
 
@@ -469,27 +504,70 @@ class _ServiceRequestScreenState
               // ADDRESS
               TextFormField(
                 controller: addressController,
-
-                textInputAction:
-                TextInputAction.next,
-
-                decoration: const InputDecoration(
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
                   labelText: 'Address',
-                  hintText: 'Enter your address',
-                  prefixIcon:
-                  Icon(Icons.location_on),
-                  border: OutlineInputBorder(),
+                  hintText: 'Enter your address or pick on map',
+                  prefixIcon: const Icon(Icons.location_on),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.map_outlined, color: Colors.blueAccent),
+                    tooltip: 'Pick location on OpenStreetMap',
+                    onPressed: _pickLocationOnMap,
+                  ),
+                  border: const OutlineInputBorder(),
                 ),
-
                 validator: (value) {
-                  if (value == null ||
-                      value.trim().isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Address is required';
                   }
-
                   return null;
                 },
               ),
+
+              const SizedBox(height: 8),
+
+              // MAP PICKER BUTTON & PREVIEW
+              OutlinedButton.icon(
+                onPressed: _pickLocationOnMap,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  side: BorderSide(
+                    color: _selectedLatitude != null
+                        ? Colors.green.shade600
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                icon: Icon(
+                  _selectedLatitude != null
+                      ? Icons.check_circle_outline
+                      : Icons.explore_outlined,
+                  color: _selectedLatitude != null
+                      ? Colors.green.shade700
+                      : Theme.of(context).colorScheme.primary,
+                ),
+                label: Text(
+                  _selectedLatitude != null
+                      ? 'Location Picked on Map (${_selectedLatitude!.toStringAsFixed(4)}, ${_selectedLongitude!.toStringAsFixed(4)})'
+                      : 'Pick Location on OpenStreetMap',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: _selectedLatitude != null
+                        ? Colors.green.shade800
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+
+              if (_selectedLatitude != null && _selectedLongitude != null) ...[
+                const SizedBox(height: 10),
+                MapPreviewCard(
+                  latitude: _selectedLatitude!,
+                  longitude: _selectedLongitude!,
+                  address: addressController.text,
+                  title: 'Service Location on Map',
+                  onEditLocation: _pickLocationOnMap,
+                ),
+              ],
 
               const SizedBox(height: 16),
 

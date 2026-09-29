@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:latlong2/latlong.dart';
 import '../../models/service_request.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../widgets/location_picker_screen.dart';
 import '../service_details_screen.dart';
 import '../history_screen.dart';
 
@@ -16,6 +19,7 @@ class WorkerDashboardScreen extends StatefulWidget {
 class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _filterWithin20Km = true;
 
   @override
   void initState() {
@@ -27,6 +31,185 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _updateWorkerLocation(AppUser worker) async {
+    final authService = context.read<AuthService>();
+    final dbService = context.read<DatabaseService>();
+
+    final result = await Navigator.push<LocationPickerResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLatitude: worker.latitude,
+          initialLongitude: worker.longitude,
+          initialAddress: worker.address,
+          title: 'Update My Worker Location',
+          confirmButtonText: 'Save My Location',
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      await authService.updateCurrentUserLocation(
+        latitude: result.latitude,
+        longitude: result.longitude,
+        address: result.address,
+      );
+      await dbService.updateUserLocation(
+        uid: worker.uid,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        address: result.address,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Worker location updated to: ${result.address}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
+  double? _getDistanceKm(AppUser worker, ServiceRequest req) {
+    if (worker.hasLocation && req.hasLocation) {
+      const distance = Distance();
+      return distance.as(
+        LengthUnit.Kilometer,
+        LatLng(worker.latitude!, worker.longitude!),
+        LatLng(req.latitude!, req.longitude!),
+      );
+    }
+    return null;
+  }
+
+  String? _getDistanceToJob(AppUser worker, ServiceRequest req) {
+    final km = _getDistanceKm(worker, req);
+    if (km != null) {
+      if (km < 1) {
+        const distance = Distance();
+        final m = distance.as(
+          LengthUnit.Meter,
+          LatLng(worker.latitude!, worker.longitude!),
+          LatLng(req.latitude!, req.longitude!),
+        );
+        return '${m.toStringAsFixed(0)} m away';
+      }
+      return '${km.toStringAsFixed(1)} km away';
+    }
+    return null;
+  }
+
+  void _showOutOfRadiusDialog(BuildContext context, double distanceKm) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.location_off, size: 48, color: Colors.red),
+        title: const Text('Outside 20 km Service Radius'),
+        content: Text(
+          'This service request is ${distanceKm.toStringAsFixed(1)} km away from your base location.\n\n'
+          'To ensure rapid and reliable service, LocalServe requires workers to accept requests within 20 km of their base location.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Understood'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkerLocationBanner(AppUser worker, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.my_location, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'My Location (OpenStreetMap)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    if (worker.hasLocation) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Active GPS',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  worker.address?.isNotEmpty == true
+                      ? worker.address!
+                      : 'Location not set yet (Tap to set on OpenStreetMap)',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (worker.hasLocation)
+                  Text(
+                    'Coordinates: ${worker.latitude!.toStringAsFixed(4)}, ${worker.longitude!.toStringAsFixed(4)}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          FilledButton.tonalIcon(
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            ),
+            onPressed: () => _updateWorkerLocation(worker),
+            icon: const Icon(Icons.edit_location_alt, size: 16),
+            label: Text(worker.hasLocation ? 'Update' : 'Set Pin'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -106,287 +289,565 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          // TAB 1: Available Jobs (Pending)
-          StreamBuilder<List<ServiceRequest>>(
-            stream: dbService.streamAvailableRequests(),
-            builder: (context, snapshot) {
-              final requests = snapshot.data ??
-                  dbService.allRequests.where((r) => r.status == 'pending').toList();
+          // Persistent Worker Location Banner
+          _buildWorkerLocationBanner(worker, theme),
 
-              if (requests.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+          // Tabs
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // TAB 1: Available Jobs (Pending)
+                StreamBuilder<List<ServiceRequest>>(
+                  stream: dbService.streamAvailableRequests(),
+                  builder: (context, snapshot) {
+                    final allPending = snapshot.data ??
+                        dbService.allRequests.where((r) => r.status == 'pending').toList();
+
+                    // Filter by 20 km if toggle is active and worker has location set
+                    final requests = (_filterWithin20Km && worker.hasLocation)
+                        ? allPending.where((r) {
+                            if (!r.hasLocation) return true;
+                            final km = _getDistanceKm(worker, r);
+                            return km == null || km <= DatabaseService.maxWorkerDistanceKm;
+                          }).toList()
+                        : allPending;
+
+                    return Column(
                       children: [
-                        Icon(Icons.assignment_turned_in_outlined,
-                            size: 60, color: Colors.grey),
-                        SizedBox(height: 12),
-                        Text(
-                          'No open requests right now',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'New customer requests will appear here in real-time.',
-                          style: TextStyle(color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: requests.length,
-                itemBuilder: (context, index) {
-                  final req = requests[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                        // Radius Filter & Information Header
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Chip(
-                                avatar: const Icon(Icons.build, size: 16),
-                                label: Text(req.service),
+                              Row(
+                                children: [
+                                  Icon(Icons.radar, size: 18, color: theme.colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '20 km Service Radius',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: req.priority.toLowerCase() == 'high'
-                                      ? Colors.red.shade100
-                                      : Colors.blue.shade100,
-                                  borderRadius: BorderRadius.circular(12),
+                              FilterChip(
+                                selected: _filterWithin20Km,
+                                avatar: Icon(
+                                  _filterWithin20Km ? Icons.check : Icons.filter_alt_outlined,
+                                  size: 14,
                                 ),
-                                child: Text(
-                                  '${req.priority} Priority',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: req.priority.toLowerCase() == 'high'
-                                        ? Colors.red.shade800
-                                        : Colors.blue.shade800,
+                                label: Text(
+                                  _filterWithin20Km ? 'Within 20 km' : 'All Requests',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                onSelected: (val) {
+                                  setState(() {
+                                    _filterWithin20Km = val;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Alert banner if worker has not set their base location
+                        if (!worker.hasLocation)
+                          Container(
+                            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.amber.shade400),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Set your base location on the map to unlock 20 km proximity jobs.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.amber.shade900,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            req.description.isNotEmpty
-                                ? req.description
-                                : 'No description provided',
-                            style: const TextStyle(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.person_outline, size: 16, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(req.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 16),
-                              const Icon(Icons.location_on_outlined, size: 16, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  req.address,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.grey),
+                                TextButton(
+                                  onPressed: () => _updateWorkerLocation(worker),
+                                  child: const Text('Set Pin', style: TextStyle(fontSize: 12)),
                                 ),
+                              ],
+                            ),
+                          ),
+
+                        // Job List
+                        Expanded(
+                          child: requests.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          _filterWithin20Km
+                                              ? Icons.location_off_outlined
+                                              : Icons.assignment_turned_in_outlined,
+                                          size: 60,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _filterWithin20Km
+                                              ? 'No requests within 20 km'
+                                              : 'No open requests right now',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _filterWithin20Km
+                                              ? 'There are no active customer requests within 20 km of your base location.'
+                                              : 'New customer requests will appear here in real-time.',
+                                          style: const TextStyle(color: Colors.grey),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        if (_filterWithin20Km && allPending.isNotEmpty) ...[
+                                          const SizedBox(height: 12),
+                                          OutlinedButton.icon(
+                                            icon: const Icon(Icons.public, size: 16),
+                                            label: Text('View All Jobs (${allPending.length})'),
+                                            onPressed: () {
+                                              setState(() {
+                                                _filterWithin20Km = false;
+                                              });
+                                            },
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  itemCount: requests.length,
+                                  itemBuilder: (context, index) {
+                                    final req = requests[index];
+                                    final distanceStr = _getDistanceToJob(worker, req);
+                                    final distanceKm = _getDistanceKm(worker, req);
+                                    final bool isOutOfRadius = distanceKm != null &&
+                                        distanceKm > DatabaseService.maxWorkerDistanceKm;
+
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Chip(
+                                                  avatar: const Icon(Icons.build, size: 16),
+                                                  label: Text(req.service),
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    if (distanceStr != null) ...[
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: isOutOfRadius
+                                                              ? Colors.red.shade50
+                                                              : Colors.green.shade50,
+                                                          border: Border.all(
+                                                            color: isOutOfRadius
+                                                                ? Colors.red.shade300
+                                                                : Colors.green.shade300,
+                                                          ),
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Icon(
+                                                              isOutOfRadius
+                                                                  ? Icons.location_off
+                                                                  : Icons.directions_walk,
+                                                              size: 14,
+                                                              color: isOutOfRadius
+                                                                  ? Colors.red.shade800
+                                                                  : Colors.green.shade800,
+                                                            ),
+                                                            const SizedBox(width: 4),
+                                                            Text(
+                                                              isOutOfRadius
+                                                                  ? '${distanceKm.toStringAsFixed(1)} km (> 20 km)'
+                                                                  : '$distanceStr • In Range',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: isOutOfRadius
+                                                                    ? Colors.red.shade900
+                                                                    : Colors.green.shade900,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                    ],
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: req.priority.toLowerCase() == 'high'
+                                                            ? Colors.red.shade100
+                                                            : Colors.blue.shade100,
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      child: Text(
+                                                        '${req.priority} Priority',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: req.priority.toLowerCase() == 'high'
+                                                              ? Colors.red.shade800
+                                                              : Colors.blue.shade800,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              req.description.isNotEmpty
+                                                  ? req.description
+                                                  : 'No description provided',
+                                              style: const TextStyle(fontSize: 15),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                                                const SizedBox(width: 4),
+                                                Text(req.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                                const SizedBox(width: 16),
+                                                const Icon(Icons.location_on_outlined, size: 16, color: Colors.grey),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    req.address,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(color: Colors.grey),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const Divider(height: 24),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                if (req.hasLocation)
+                                                  OutlinedButton.icon(
+                                                    icon: const Icon(Icons.map_outlined, size: 16),
+                                                    label: const Text('Map'),
+                                                    onPressed: () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) => LocationPickerScreen(
+                                                            initialLatitude: req.latitude,
+                                                            initialLongitude: req.longitude,
+                                                            initialAddress: req.address,
+                                                            title: '${req.service} Location',
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                const SizedBox(width: 8),
+                                                TextButton(
+                                                  onPressed: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) => ServiceDetailsScreen(request: req),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: const Text('View Details'),
+                                                ),
+                                                const SizedBox(width: 8),
+
+                                                // Accept Job Button / Out-of-radius guard
+                                                if (isOutOfRadius)
+                                                  FilledButton.tonalIcon(
+                                                    icon: const Icon(Icons.block, size: 16),
+                                                    label: const Text('Beyond 20 km'),
+                                                    style: FilledButton.styleFrom(
+                                                      foregroundColor: Colors.red.shade800,
+                                                      backgroundColor: Colors.red.shade50,
+                                                    ),
+                                                    onPressed: () => _showOutOfRadiusDialog(context, distanceKm),
+                                                  )
+                                                else if (!worker.hasLocation)
+                                                  FilledButton.tonalIcon(
+                                                    icon: const Icon(Icons.add_location_alt, size: 16),
+                                                    label: const Text('Set Pin to Accept'),
+                                                    onPressed: () => _updateWorkerLocation(worker),
+                                                  )
+                                                else
+                                                  FilledButton.icon(
+                                                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                                                    label: const Text('Accept Job'),
+                                                    onPressed: () async {
+                                                      try {
+                                                        await dbService.acceptJob(
+                                                          requestId: req.id,
+                                                          workerId: worker.uid,
+                                                          workerName: worker.name,
+                                                          worker: worker,
+                                                        );
+                                                        if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text('Accepted job for ${req.service}!'),
+                                                              backgroundColor: Colors.green,
+                                                            ),
+                                                          );
+                                                          _tabController.animateTo(1); // switch to active jobs
+                                                        }
+                                                      } catch (e) {
+                                                        if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                e.toString().replaceAll('Exception:', '').trim(),
+                                                              ),
+                                                              backgroundColor: Colors.red,
+                                                            ),
+                                                          );
+                                                        }
+                                                      }
+                                                    },
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+
+                // TAB 2: My Active Jobs (Assigned to this worker)
+                StreamBuilder<List<ServiceRequest>>(
+                  stream: dbService.streamWorkerJobs(worker.uid),
+                  builder: (context, snapshot) {
+                    final jobs = snapshot.data ??
+                        dbService.allRequests
+                            .where((r) => r.workerId == worker.uid)
+                            .toList();
+
+                    if (jobs.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.handyman_outlined, size: 60, color: Colors.grey),
+                              SizedBox(height: 12),
+                              Text(
+                                'No jobs taken yet',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Switch to "Available Jobs" to accept incoming requests.',
+                                style: TextStyle(color: Colors.grey),
+                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),
-                          const Divider(height: 24),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () {
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: jobs.length,
+                      itemBuilder: (context, index) {
+                        final job = jobs[index];
+                        final isDone = job.status == 'completed';
+                        final distanceStr = _getDistanceToJob(worker, job);
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: CircleAvatar(
+                              backgroundColor: isDone ? Colors.green.shade100 : Colors.blue.shade100,
+                              child: Icon(
+                                isDone ? Icons.done_all : Icons.pending,
+                                color: isDone ? Colors.green.shade800 : Colors.blue.shade800,
+                              ),
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    job.service,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      decoration: isDone ? TextDecoration.lineThrough : null,
+                                    ),
+                                  ),
+                                ),
+                                if (distanceStr != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.green.shade300),
+                                    ),
+                                    child: Text(
+                                      distanceStr,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade900,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text('Customer: ${job.name} • ${job.mobile}'),
+                                Text('Address: ${job.address}'),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isDone ? Colors.green.shade50 : Colors.amber.shade50,
+                                    border: Border.all(
+                                      color: isDone ? Colors.green : Colors.amber.shade700,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    'Status: ${job.status.toUpperCase()}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDone ? Colors.green.shade900 : Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (val) async {
+                                if (val == 'view') {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => ServiceDetailsScreen(request: req),
+                                      builder: (_) => ServiceDetailsScreen(request: job),
                                     ),
                                   );
-                                },
-                                child: const Text('View Details'),
-                              ),
-                              const SizedBox(width: 8),
-                              FilledButton.icon(
-                                icon: const Icon(Icons.check_circle_outline, size: 18),
-                                label: const Text('Accept Job'),
-                                onPressed: () async {
-                                  await dbService.acceptJob(
-                                    requestId: req.id,
-                                    workerId: worker.uid,
-                                    workerName: worker.name,
-                                  );
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Accepted job for ${req.service}!'),
-                                        backgroundColor: Colors.green,
+                                } else if (val == 'map' && job.hasLocation) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LocationPickerScreen(
+                                        initialLatitude: job.latitude,
+                                        initialLongitude: job.longitude,
+                                        initialAddress: job.address,
+                                        title: '${job.service} - ${job.name}',
                                       ),
-                                    );
-                                    _tabController.animateTo(1); // switch to active jobs
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-
-          // TAB 2: My Active Jobs (Assigned to this worker)
-          StreamBuilder<List<ServiceRequest>>(
-            stream: dbService.streamWorkerJobs(worker.uid),
-            builder: (context, snapshot) {
-              final jobs = snapshot.data ??
-                  dbService.allRequests
-                      .where((r) => r.workerId == worker.uid)
-                      .toList();
-
-              if (jobs.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.handyman_outlined, size: 60, color: Colors.grey),
-                        SizedBox(height: 12),
-                        Text(
-                          'No jobs taken yet',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Switch to "Available Jobs" to accept incoming requests.',
-                          style: TextStyle(color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: jobs.length,
-                itemBuilder: (context, index) {
-                  final job = jobs[index];
-                  final isDone = job.status == 'completed';
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: CircleAvatar(
-                        backgroundColor: isDone ? Colors.green.shade100 : Colors.blue.shade100,
-                        child: Icon(
-                          isDone ? Icons.done_all : Icons.pending,
-                          color: isDone ? Colors.green.shade800 : Colors.blue.shade800,
-                        ),
-                      ),
-                      title: Text(
-                        job.service,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          decoration: isDone ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text('Customer: ${job.name} • ${job.mobile}'),
-                          Text('Address: ${job.address}'),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isDone ? Colors.green.shade50 : Colors.amber.shade50,
-                              border: Border.all(
-                                color: isDone ? Colors.green : Colors.amber.shade700,
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              'Status: ${job.status.toUpperCase()}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isDone ? Colors.green.shade900 : Colors.amber.shade900,
-                              ),
+                                    ),
+                                  );
+                                } else if (val == 'progress') {
+                                  await dbService.updateStatus(
+                                    requestId: job.id,
+                                    newStatus: 'in_progress',
+                                  );
+                                } else if (val == 'complete') {
+                                  await dbService.updateStatus(
+                                    requestId: job.id,
+                                    newStatus: 'completed',
+                                  );
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(
+                                  value: 'view',
+                                  child: Text('View Details'),
+                                ),
+                                if (job.hasLocation)
+                                  const PopupMenuItem(
+                                    value: 'map',
+                                    child: Text('View on Map'),
+                                  ),
+                                if (job.status != 'in_progress' && !isDone)
+                                  const PopupMenuItem(
+                                    value: 'progress',
+                                    child: Text('Mark In Progress'),
+                                  ),
+                                if (!isDone)
+                                  const PopupMenuItem(
+                                    value: 'complete',
+                                    child: Text('Mark Completed'),
+                                  ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (val) async {
-                          if (val == 'view') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ServiceDetailsScreen(request: job),
-                              ),
-                            );
-                          } else if (val == 'progress') {
-                            await dbService.updateStatus(
-                              requestId: job.id,
-                              newStatus: 'in_progress',
-                            );
-                          } else if (val == 'complete') {
-                            await dbService.updateStatus(
-                              requestId: job.id,
-                              newStatus: 'completed',
-                            );
-                          }
-                        },
-                        itemBuilder: (ctx) => [
-                          const PopupMenuItem(
-                            value: 'view',
-                            child: Text('View Details'),
-                          ),
-                          if (job.status != 'in_progress' && !isDone)
-                            const PopupMenuItem(
-                              value: 'progress',
-                              child: Text('Mark In Progress'),
-                            ),
-                          if (!isDone)
-                            const PopupMenuItem(
-                              value: 'complete',
-                              child: Text('Mark Completed'),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 }
+

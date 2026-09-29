@@ -24,6 +24,8 @@ class AuthService extends ChangeNotifier {
       name: 'John Customer',
       mobile: '9876543210',
       address: '102 Green Heights, 5th Main Road',
+      latitude: 23.0225,
+      longitude: 72.5714,
       role: UserRole.customer,
     ),
     const AppUser(
@@ -32,6 +34,8 @@ class AuthService extends ChangeNotifier {
       name: 'Alex Plumber',
       mobile: '9123456780',
       address: 'Shop 12, Market Complex, West Side',
+      latitude: 23.0260,
+      longitude: 72.5760,
       role: UserRole.worker,
       workerSkill: 'Plumbing',
     ),
@@ -184,6 +188,8 @@ class AuthService extends ChangeNotifier {
     required String name,
     required String mobile,
     String? address,
+    double? latitude,
+    double? longitude,
     required UserRole role,
     String? workerSkill,
   }) async {
@@ -205,6 +211,8 @@ class AuthService extends ChangeNotifier {
             name: name.trim(),
             mobile: mobile.trim(),
             address: address?.trim(),
+            latitude: latitude,
+            longitude: longitude,
             role: role,
             workerSkill: workerSkill,
             createdAt: DateTime.now(),
@@ -235,6 +243,8 @@ class AuthService extends ChangeNotifier {
           name: name.trim(),
           mobile: mobile.trim(),
           address: address?.trim(),
+          latitude: latitude,
+          longitude: longitude,
           role: role,
           workerSkill: workerSkill,
           createdAt: DateTime.now(),
@@ -268,6 +278,43 @@ class AuthService extends ChangeNotifier {
       await fb_auth.FirebaseAuth.instance.signOut();
     }
     _currentUser = null;
+    notifyListeners();
+  }
+
+  // UPDATE LOCATION
+  Future<void> updateCurrentUserLocation({
+    required double latitude,
+    required double longitude,
+    required String address,
+  }) async {
+    if (_currentUser == null) return;
+
+    final updated = _currentUser!.copyWith(
+      latitude: latitude,
+      longitude: longitude,
+      address: address,
+    );
+
+    _currentUser = updated;
+
+    // Update in local registered list
+    final idx = _registeredUsers.indexWhere((u) => u.uid == updated.uid);
+    if (idx != -1) {
+      _registeredUsers[idx] = updated;
+    }
+
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update({
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address,
+        });
+      } catch (e) {
+        debugPrint('Error updating user location in Firestore: $e');
+      }
+    }
+
     notifyListeners();
   }
 }

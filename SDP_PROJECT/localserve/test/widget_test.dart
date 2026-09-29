@@ -39,7 +39,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Find Local Home Services'), findsOneWidget);
-      expect(find.text('Request a Service'), findsOneWidget);
+      expect(find.text('Request Service'), findsOneWidget);
     },
   );
 
