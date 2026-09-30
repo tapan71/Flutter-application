@@ -175,6 +175,102 @@ class DatabaseService extends ChangeNotifier {
       ratingCount: 12,
       completedJobsCount: 15,
     ),
+    const AppUser(
+      uid: 'demo_worker_3',
+      email: 'rajesh.electric@localserve.com',
+      name: 'Rajesh Sharma',
+      mobile: '9822334411',
+      address: 'Near Commerce Six Road, Navrangpura, Ahmedabad',
+      latitude: 23.0360,
+      longitude: 72.5600,
+      role: UserRole.worker,
+      workerSkill: 'Electrical',
+      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+      bio: 'Licensed Senior Electrician with 12 years experience. Specializing in complete wiring, MCB circuit breakers, short-circuits & safe power installations.',
+      rating: 4.8,
+      ratingCount: 22,
+      completedJobsCount: 35,
+    ),
+    const AppUser(
+      uid: 'demo_worker_4',
+      email: 'vikram.carpenter@localserve.com',
+      name: 'Vikram Patel',
+      mobile: '9898765432',
+      address: 'Near Jodhpur Cross Road, Satellite, Ahmedabad',
+      latitude: 23.0280,
+      longitude: 72.5200,
+      role: UserRole.worker,
+      workerSkill: 'Carpentry',
+      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+      bio: 'Artisan Carpenter specializing in modular kitchen fittings, door hinges, lock installations, and custom furniture repair.',
+      rating: 4.9,
+      ratingCount: 19,
+      completedJobsCount: 28,
+    ),
+    const AppUser(
+      uid: 'demo_worker_5',
+      email: 'anita.cleaning@localserve.com',
+      name: 'Anita Verma',
+      mobile: '9877665544',
+      address: 'Bodakdev Garden Road, Ahmedabad',
+      latitude: 23.0400,
+      longitude: 72.5100,
+      role: UserRole.worker,
+      workerSkill: 'Cleaning',
+      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+      bio: 'Professional deep cleaning specialist. Equipped with modern eco-friendly equipment for kitchen, sofa, carpet and full home sanitization.',
+      rating: 5.0,
+      ratingCount: 31,
+      completedJobsCount: 45,
+    ),
+    const AppUser(
+      uid: 'demo_worker_6',
+      email: 'sunil.painter@localserve.com',
+      name: 'Sunil Prajapati',
+      mobile: '9811002233',
+      address: 'Near Vastrapur Lake, Ahmedabad',
+      latitude: 23.0350,
+      longitude: 72.5350,
+      role: UserRole.worker,
+      workerSkill: 'Painting',
+      avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
+      bio: 'Professional wall painter and texture specialist. Clean, mess-free painting with premium waterproof emulsions and fast turnarounds.',
+      rating: 4.7,
+      ratingCount: 14,
+      completedJobsCount: 20,
+    ),
+    const AppUser(
+      uid: 'demo_worker_7',
+      email: 'manoj.appliance@localserve.com',
+      name: 'Manoj Kumar',
+      mobile: '9833445566',
+      address: 'Drive-in Road, Memnagar, Ahmedabad',
+      latitude: 23.0470,
+      longitude: 72.5280,
+      role: UserRole.worker,
+      workerSkill: 'Appliance Repair',
+      avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150',
+      bio: 'Certified Home Appliance Technician. Expert in AC gas refill & servicing, refrigerator cooling, washing machine drum repair & microwave ovens.',
+      rating: 4.8,
+      ratingCount: 27,
+      completedJobsCount: 39,
+    ),
+    const AppUser(
+      uid: 'demo_worker_8',
+      email: 'sanjay.general@localserve.com',
+      name: 'Sanjay Rawat',
+      mobile: '9844556677',
+      address: 'CG Road, Ellisbridge, Ahmedabad',
+      latitude: 23.0250,
+      longitude: 72.5550,
+      role: UserRole.worker,
+      workerSkill: 'General Service',
+      avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150',
+      bio: 'All-round experienced Handyman. Fast resolution for general household repairs, curtain rod installations, ceiling drillings, and fixture fixes.',
+      rating: 4.9,
+      ratingCount: 40,
+      completedJobsCount: 52,
+    ),
   ];
 
   static final List<Review> _defaultReviews = [
@@ -1165,5 +1261,219 @@ class DatabaseService extends ChangeNotifier {
       await _storage.saveUser(updated);
       notifyListeners();
     }
+  }
+
+  // --- CATEGORY WORKER DISCOVERY & DIRECT BOOKING (1-HOUR EXPIRY) ---
+
+  /// Finds all verified workers for a given category, sorted by distance from the customer
+  List<AppUser> getWorkersForCategory(
+    String category, {
+    double? customerLat,
+    double? customerLon,
+    double maxDistanceKm = 20.0,
+    bool strictWithinRadius = false,
+  }) {
+    final catNorm = category.trim().toLowerCase();
+    final workers = _mockUsers.where((u) {
+      if (u.role != UserRole.worker) return false;
+      final skill = (u.workerSkill ?? '').trim().toLowerCase();
+      if (skill.isEmpty || skill == 'general service' || skill == 'all') return true;
+      if (catNorm == 'general service' || catNorm == 'all') return true;
+      return skill == catNorm;
+    }).toList();
+
+    // Sort by distance if customer has coordinates
+    if (customerLat != null && customerLon != null) {
+      workers.sort((a, b) {
+        final distA = calculateDistanceKm(
+              lat1: customerLat,
+              lon1: customerLon,
+              lat2: a.latitude,
+              lon2: a.longitude,
+            ) ??
+            9999.0;
+        final distB = calculateDistanceKm(
+              lat1: customerLat,
+              lon1: customerLon,
+              lat2: b.latitude,
+              lon2: b.longitude,
+            ) ??
+            9999.0;
+        return distA.compareTo(distB);
+      });
+
+      if (strictWithinRadius) {
+        return workers.where((w) {
+          final dist = calculateDistanceKm(
+            lat1: customerLat,
+            lon1: customerLon,
+            lat2: w.latitude,
+            lon2: w.longitude,
+          );
+          return dist == null || dist <= maxDistanceKm;
+        }).toList();
+      }
+    }
+
+    return workers;
+  }
+
+  /// Customer books a specific worker directly.
+  /// Worker has 1 hour to respond, after which the request automatically expires/rejects.
+  Future<void> createDirectRequest({
+    required ServiceRequest request,
+    required AppUser targetWorker,
+    required AppUser customer,
+  }) async {
+    final expiresAt = DateTime.now().add(const Duration(hours: 1));
+    final directReq = request.copyWith(
+      status: 'direct_pending',
+      targetWorkerId: targetWorker.uid,
+      targetWorkerName: targetWorker.name,
+      directRequestExpiresAt: expiresAt,
+      customerId: customer.uid,
+      name: customer.name,
+      email: customer.email,
+      mobile: customer.mobile,
+      address: request.address.isNotEmpty ? request.address : (customer.address ?? ''),
+      latitude: request.latitude ?? customer.latitude,
+      longitude: request.longitude ?? customer.longitude,
+    );
+
+    await addRequest(directReq);
+
+    // 1. Notify targeted worker
+    await sendNotification(
+      userId: targetWorker.uid,
+      title: 'Direct Job Request! ⏳',
+      message: '${customer.name} sent you a direct request for ${directReq.service}! Please review their profile & accept within 1 hour.',
+      type: 'direct_request',
+      requestId: directReq.id,
+      relatedUserId: customer.uid,
+    );
+
+    // 2. Notify customer
+    await sendNotification(
+      userId: customer.uid,
+      title: 'Direct Request Sent',
+      message: 'Your request for ${directReq.service} was sent directly to ${targetWorker.name}. They have 1 hour to respond.',
+      type: 'direct_request_sent',
+      requestId: directReq.id,
+      relatedUserId: targetWorker.uid,
+    );
+  }
+
+  /// Worker accepts a direct request within the 1-hour window
+  Future<void> acceptDirectRequest({
+    required String requestId,
+    required String workerId,
+    required String workerName,
+  }) async {
+    await checkAndExpireDirectRequests();
+
+    final target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null) throw Exception('Request not found.');
+
+    if (target.isDirectExpired || target.status == 'rejected') {
+      throw Exception('This direct request has expired (1 hour limit exceeded) or was declined.');
+    }
+
+    if (target.status == 'assigned') {
+      throw Exception('This request has already been assigned.');
+    }
+
+    final updated = target.copyWith(
+      status: 'assigned',
+      workerId: workerId,
+      workerName: workerName,
+    );
+    await updateRequest(updated);
+
+    if (target.customerId != null && target.customerId!.isNotEmpty) {
+      await sendNotification(
+        userId: target.customerId!,
+        title: 'Direct Request Accepted! 🎉',
+        message: '$workerName accepted your direct request for ${target.service}! Work is scheduled.',
+        type: 'direct_request_accepted',
+        requestId: requestId,
+        relatedUserId: workerId,
+      );
+    }
+  }
+
+  /// Worker declines a direct request
+  Future<void> declineDirectRequest({
+    required String requestId,
+    required String workerId,
+    required String workerName,
+    String? reason,
+  }) async {
+    final target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null) return;
+
+    final updated = target.copyWith(status: 'rejected');
+    await updateRequest(updated);
+
+    if (target.customerId != null && target.customerId!.isNotEmpty) {
+      await sendNotification(
+        userId: target.customerId!,
+        title: 'Direct Request Declined',
+        message: '$workerName was unable to take your ${target.service} request at this time. You can request another worker or post a public request.',
+        type: 'direct_request_declined',
+        requestId: requestId,
+        relatedUserId: workerId,
+      );
+    }
+  }
+
+  /// Automatically check and expire direct requests that have passed the 1-hour window
+  Future<void> checkAndExpireDirectRequests() async {
+    final now = DateTime.now();
+    final expired = _mockRequests
+        .where((r) =>
+            r.isDirectPending &&
+            r.directRequestExpiresAt != null &&
+            now.isAfter(r.directRequestExpiresAt!))
+        .toList();
+
+    for (final req in expired) {
+      final updated = req.copyWith(status: 'rejected');
+      await updateRequest(updated);
+
+      if (req.customerId != null && req.customerId!.isNotEmpty) {
+        await sendNotification(
+          userId: req.customerId!,
+          title: 'Direct Request Expired ⏰',
+          message:
+              'Your direct request to ${req.targetWorkerName ?? "worker"} expired because they did not respond within 1 hour. You can choose another nearby worker or post a request.',
+          type: 'direct_request_expired',
+          requestId: req.id,
+          relatedUserId: req.targetWorkerId,
+        );
+      }
+    }
+  }
+
+  /// Stream direct invitations targeted specifically to this worker
+  Stream<List<ServiceRequest>> streamWorkerDirectInvitations(String workerId) {
+    return Stream<List<ServiceRequest>>.multi((controller) {
+      List<ServiceRequest> filter(List<ServiceRequest> list) {
+        final now = DateTime.now();
+        return list.where((r) {
+          if (r.targetWorkerId != workerId) return false;
+          if (r.status != 'direct_pending') return false;
+          if (r.directRequestExpiresAt != null && now.isAfter(r.directRequestExpiresAt!)) {
+            return false;
+          }
+          return true;
+        }).toList();
+      }
+
+      controller.add(filter(_mockRequests));
+      final sub = _mockRequestsStreamController.stream.listen((list) {
+        controller.add(filter(list));
+      });
+      controller.onCancel = () => sub.cancel();
+    });
   }
 }

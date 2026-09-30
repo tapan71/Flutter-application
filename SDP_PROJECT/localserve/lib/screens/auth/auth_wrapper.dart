@@ -13,7 +13,7 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
 
-    if (authService.isLoading) {
+    if (authService.isInitializingSession) {
       return const Scaffold(
         body: Center(
           child: Column(

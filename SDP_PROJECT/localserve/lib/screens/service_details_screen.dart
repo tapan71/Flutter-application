@@ -238,6 +238,7 @@ class ServiceDetailsScreen extends StatelessWidget {
                                         backgroundImage: worker?.avatarUrl != null
                                             ? NetworkImage(worker!.avatarUrl!)
                                             : null,
+                                        onBackgroundImageError: worker?.avatarUrl != null ? (error, stackTrace) {} : null,
                                         child: worker?.avatarUrl == null
                                             ? Text(
                                                 worker != null && worker.name.isNotEmpty

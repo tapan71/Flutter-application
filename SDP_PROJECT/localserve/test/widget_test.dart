@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +10,10 @@ import 'package:localserve/services/auth_service.dart';
 import 'package:localserve/services/local_storage_service.dart';
 
 void main() {
+  setUpAll(() {
+    HttpOverrides.global = _TestHttpOverrides();
+  });
+
   setUp(() {
     LocalStorageService().resetForTesting();
   });
@@ -43,8 +50,7 @@ void main() {
       await tester.tap(customerChip);
       await tester.pumpAndSettle();
 
-      expect(find.text('Find Local Home Services'), findsOneWidget);
-      expect(find.text('Request Service'), findsOneWidget);
+      expect(find.text('Plumbing'), findsOneWidget);
     },
   );
 
@@ -110,11 +116,9 @@ void main() {
       await tester.tap(customerChip);
       await tester.pumpAndSettle();
 
-      // Click "Request Service"
-      final requestButton = find.widgetWithText(FilledButton, 'Request Service');
+      // Click "New Request" FAB
+      final requestButton = find.widgetWithText(FloatingActionButton, 'New Request');
       expect(requestButton, findsOneWidget);
-      await tester.ensureVisible(requestButton);
-      await tester.pumpAndSettle();
       await tester.tap(requestButton);
       await tester.pumpAndSettle();
 
@@ -142,3 +146,82 @@ void main() {
     },
   );
 }
+
+class _TestHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return _TestHttpClient();
+  }
+}
+
+class _TestHttpClient implements HttpClient {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+
+  @override
+  bool autoUncompress = true;
+
+  @override
+  Duration idleTimeout = const Duration(seconds: 15);
+
+  @override
+  Duration? connectionTimeout;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async => _TestHttpClientRequest();
+}
+
+class _TestHttpClientRequest implements HttpClientRequest {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+
+  @override
+  final HttpHeaders headers = _TestHttpHeaders();
+
+  @override
+  Future<HttpClientResponse> close() async => _TestHttpClientResponse();
+}
+
+class _TestHttpHeaders implements HttpHeaders {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _TestHttpClientResponse implements HttpClientResponse {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+
+  @override
+  int get statusCode => 200;
+
+  @override
+  int get contentLength => _kTransparentImage.length;
+
+  @override
+  HttpClientResponseCompressionState get compressionState =>
+      HttpClientResponseCompressionState.notCompressed;
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    return Stream<List<int>>.fromIterable([_kTransparentImage]).listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+  }
+}
+
+final List<int> _kTransparentImage = <int>[
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
+  0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44,
+  0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D,
+  0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42,
+  0x60, 0x82,
+];

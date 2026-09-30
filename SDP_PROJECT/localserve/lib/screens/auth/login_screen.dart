@@ -38,9 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception:', '').trim();
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception:', '').trim();
+        });
+      }
     }
   }
 

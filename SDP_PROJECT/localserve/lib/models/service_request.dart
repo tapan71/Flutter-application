@@ -15,6 +15,9 @@ class ServiceRequest {
   final String? customerId;
   final String? workerId;
   final String? workerName;
+  final String? targetWorkerId;
+  final String? targetWorkerName;
+  final DateTime? directRequestExpiresAt;
   final DateTime? createdAt;
   final List<String> applicantWorkerIds;
   final List<String> declinedWorkerIds;
@@ -39,6 +42,9 @@ class ServiceRequest {
     this.customerId,
     this.workerId,
     this.workerName,
+    this.targetWorkerId,
+    this.targetWorkerName,
+    this.directRequestExpiresAt,
     this.createdAt,
     this.applicantWorkerIds = const [],
     this.declinedWorkerIds = const [],
@@ -52,6 +58,14 @@ class ServiceRequest {
   bool get isAssigned => status == 'assigned';
   bool get isInProgress => status == 'in_progress';
   bool get isCancelled => status == 'cancelled';
+  bool get isDirectPending => status == 'direct_pending';
+  bool get isRejected => status == 'rejected';
+
+  bool get isDirectRequest => targetWorkerId != null && targetWorkerId!.isNotEmpty;
+  bool get isDirectExpired =>
+      isDirectPending &&
+      directRequestExpiresAt != null &&
+      DateTime.now().isAfter(directRequestExpiresAt!);
 
   bool get hasLocation => latitude != null && longitude != null;
 
@@ -73,6 +87,9 @@ class ServiceRequest {
     String? customerId,
     String? workerId,
     String? workerName,
+    String? targetWorkerId,
+    String? targetWorkerName,
+    DateTime? directRequestExpiresAt,
     DateTime? createdAt,
     List<String>? applicantWorkerIds,
     List<String>? declinedWorkerIds,
@@ -101,6 +118,9 @@ class ServiceRequest {
       customerId: customerId ?? this.customerId,
       workerId: workerId ?? this.workerId,
       workerName: workerName ?? this.workerName,
+      targetWorkerId: targetWorkerId ?? this.targetWorkerId,
+      targetWorkerName: targetWorkerName ?? this.targetWorkerName,
+      directRequestExpiresAt: directRequestExpiresAt ?? this.directRequestExpiresAt,
       createdAt: createdAt ?? this.createdAt,
       applicantWorkerIds: applicantWorkerIds ?? this.applicantWorkerIds,
       declinedWorkerIds: declinedWorkerIds ?? this.declinedWorkerIds,
@@ -127,6 +147,9 @@ class ServiceRequest {
       'customerId': customerId,
       'workerId': workerId,
       'workerName': workerName,
+      'targetWorkerId': targetWorkerId,
+      'targetWorkerName': targetWorkerName,
+      'directRequestExpiresAt': directRequestExpiresAt?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
       'applicantWorkerIds': applicantWorkerIds,
       'declinedWorkerIds': declinedWorkerIds,
@@ -158,6 +181,11 @@ class ServiceRequest {
       customerId: map['customerId'] as String?,
       workerId: map['workerId'] as String?,
       workerName: map['workerName'] as String?,
+      targetWorkerId: map['targetWorkerId'] as String?,
+      targetWorkerName: map['targetWorkerName'] as String?,
+      directRequestExpiresAt: map['directRequestExpiresAt'] != null
+          ? DateTime.tryParse(map['directRequestExpiresAt'].toString())
+          : null,
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString())
           : null,

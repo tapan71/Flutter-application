@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../models/review_model.dart';
 import '../services/database_service.dart';
+import 'edit_profile_dialog.dart';
 
 class UserProfileDialog extends StatelessWidget {
   final AppUser user;
   final VoidCallback? onConfirmWorker;
   final VoidCallback? onDeclineWorker;
   final bool showActionButtons;
+  final bool showEditProfileButton;
 
   const UserProfileDialog({
     super.key,
@@ -16,6 +18,7 @@ class UserProfileDialog extends StatelessWidget {
     this.onConfirmWorker,
     this.onDeclineWorker,
     this.showActionButtons = false,
+    this.showEditProfileButton = false,
   });
 
   static void show(
@@ -24,6 +27,7 @@ class UserProfileDialog extends StatelessWidget {
     VoidCallback? onConfirmWorker,
     VoidCallback? onDeclineWorker,
     bool showActionButtons = false,
+    bool showEditProfileButton = false,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -34,6 +38,7 @@ class UserProfileDialog extends StatelessWidget {
         onConfirmWorker: onConfirmWorker,
         onDeclineWorker: onDeclineWorker,
         showActionButtons: showActionButtons,
+        showEditProfileButton: showEditProfileButton,
       ),
     );
   }
@@ -83,6 +88,7 @@ class UserProfileDialog extends StatelessWidget {
                             backgroundImage: user.avatarUrl != null
                                 ? NetworkImage(user.avatarUrl!)
                                 : null,
+                            onBackgroundImageError: user.avatarUrl != null ? (error, stackTrace) {} : null,
                             child: user.avatarUrl == null
                                 ? Text(
                                     user.name.isNotEmpty
@@ -165,6 +171,26 @@ class UserProfileDialog extends StatelessWidget {
                               ),
                             ],
                           ),
+
+                          // Prominent Edit Profile button for customer/worker viewing own profile
+                          if (showEditProfileButton) ...[
+                            const SizedBox(height: 14),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.edit, size: 18),
+                              label: const Text(
+                                'Edit Profile & Address',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                EditProfileDialog.show(context, user: user);
+                              },
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -193,11 +219,40 @@ class UserProfileDialog extends StatelessWidget {
                     ],
 
                     // Contact & Location
-                    const Text(
-                      'Details & Location',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Details & Location',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        if (showEditProfileButton)
+                          TextButton.icon(
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                            icon: const Icon(Icons.edit_outlined, size: 14),
+                            label: const Text('Edit', style: TextStyle(fontSize: 12)),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              EditProfileDialog.show(context, user: user);
+                            },
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.email_outlined, color: Colors.indigo),
+                      title: Text(user.email.isNotEmpty ? user.email : 'Not provided'),
+                      subtitle: const Text('Registered Email', style: TextStyle(fontSize: 11)),
+                    ),
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.phone_outlined, color: Colors.green),
+                      title: Text(user.mobile.isNotEmpty ? user.mobile : 'Not provided'),
+                      subtitle: const Text('Contact number', style: TextStyle(fontSize: 11)),
+                    ),
                     ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -209,13 +264,6 @@ class UserProfileDialog extends StatelessWidget {
                               style: const TextStyle(fontSize: 11),
                             )
                           : null,
-                    ),
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.phone_outlined, color: Colors.green),
-                      title: Text(user.mobile.isNotEmpty ? user.mobile : 'Not provided'),
-                      subtitle: const Text('Contact number', style: TextStyle(fontSize: 11)),
                     ),
 
                     const Divider(height: 28),

@@ -9,12 +9,14 @@ import 'local_storage_service.dart';
 class AuthService extends ChangeNotifier {
   AppUser? _currentUser;
   bool _isLoading = false;
+  bool _isInitializingSession = true;
   bool _isFirebaseInitialized = false;
   bool _isRegistering = false;
   final LocalStorageService _storage = LocalStorageService();
 
   AppUser? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
+  bool get isInitializingSession => _isInitializingSession;
   bool get isAuthenticated => _currentUser != null;
   bool get isFirebaseInitialized => _isFirebaseInitialized;
 
@@ -75,38 +77,41 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _initialize() async {
-    // 1. Initialize persistent storage
-    await _storage.init();
+    _isInitializingSession = true;
 
-    // 2. Load registered users from disk
-    final savedUsers = _storage.getAllUsers();
-    if (savedUsers.isEmpty) {
-      // Seed default demo users
-      for (final demo in demoUsers) {
-        _registeredUsers.add(demo);
-        await _storage.saveUser(demo, password: 'password');
-      }
-    } else {
-      _registeredUsers.addAll(savedUsers);
-      // Ensure demo users are present
-      for (final demo in demoUsers) {
-        if (!_registeredUsers.any((u) => u.uid == demo.uid)) {
+    try {
+      // 1. Initialize persistent storage
+      await _storage.init();
+
+      // 2. Load registered users from disk
+      final savedUsers = _storage.getAllUsers();
+      if (savedUsers.isEmpty) {
+        // Seed default demo users
+        for (final demo in demoUsers) {
           _registeredUsers.add(demo);
           await _storage.saveUser(demo, password: 'password');
         }
+      } else {
+        _registeredUsers.addAll(savedUsers);
+        // Ensure demo users are present
+        for (final demo in demoUsers) {
+          if (!_registeredUsers.any((u) => u.uid == demo.uid)) {
+            _registeredUsers.add(demo);
+            await _storage.saveUser(demo, password: 'password');
+          }
+        }
       }
-    }
 
-    // 3. Restore active session if available
-    final activeId = _storage.activeUserId;
-    if (activeId != null) {
-      final savedUser = _storage.getUserById(activeId);
-      if (savedUser != null) {
-        _currentUser = savedUser;
+      // 3. Restore active session if available
+      final activeId = _storage.activeUserId;
+      if (activeId != null) {
+        final savedUser = _storage.getUserById(activeId);
+        if (savedUser != null) {
+          _currentUser = savedUser;
+        }
       }
-    }
 
-    try {
+      // 4. Attach Firebase auth state listener if Firebase is available
       if (Firebase.apps.isNotEmpty) {
         _isFirebaseInitialized = true;
         fb_auth.FirebaseAuth.instance.authStateChanges().listen((fbUser) async {
@@ -116,18 +121,17 @@ class AuthService extends ChangeNotifier {
             await _fetchUserProfile(fbUser.uid);
           } else if (!_storage.isInitialized || _storage.activeUserId == null) {
             _currentUser = null;
-            _isLoading = false;
             notifyListeners();
           }
         });
-        return;
       }
     } catch (e) {
-      debugPrint('Firebase not configured or initialized yet: $e');
+      debugPrint('AuthService initialization notice: $e');
+    } finally {
+      _isInitializingSession = false;
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
   Future<void> _fetchUserProfile(String uid) async {
@@ -177,53 +181,64 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_isFirebaseInitialized) {
-        final credential = await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        );
-        if (credential.user != null) {
-          await _fetchUserProfile(credential.user!.uid);
-        }
-      } else {
-        // Mock / Offline persistent mode
-        await Future.delayed(const Duration(milliseconds: 250));
-        final normalizedEmail = email.trim().toLowerCase();
+      final trimmedEmail = email.trim();
+      final normalizedEmail = trimmedEmail.toLowerCase();
+      final trimmedPassword = password.trim();
 
-        // 1. Look up in registered users or storage
-        var user = _storage.getUserByEmail(normalizedEmail);
-        user ??= _registeredUsers.cast<AppUser?>().firstWhere(
-              (u) => u?.email.toLowerCase() == normalizedEmail,
-              orElse: () => null,
-            );
-
-        if (user != null) {
-          final savedPassword = _storage.getPassword(normalizedEmail);
-          if (savedPassword != null && savedPassword != password) {
-            throw Exception('Invalid password. Please try again.');
-          }
-          _currentUser = user;
-          await _storage.setActiveUserId(user.uid);
-        } else {
-          // If trying demo emails
-          if (normalizedEmail == 'customer@localserve.com') {
-            _currentUser = demoUsers[0];
-            await _storage.setActiveUserId(_currentUser!.uid);
-          } else if (normalizedEmail == 'worker@localserve.com') {
-            _currentUser = demoUsers[1];
-            await _storage.setActiveUserId(_currentUser!.uid);
-          } else {
-            throw Exception('No account found for "$email". Please register first to set up your mobile number and address.');
-          }
-        }
-
-        _isLoading = false;
-        notifyListeners();
+      if (normalizedEmail.isEmpty) {
+        throw Exception('Please enter your email address.');
       }
-    } catch (e) {
+      if (trimmedPassword.isEmpty) {
+        throw Exception('Please enter your password.');
+      }
+
+      if (_isFirebaseInitialized) {
+        try {
+          final credential = await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: trimmedEmail,
+            password: password,
+          );
+          if (credential.user != null) {
+            await _fetchUserProfile(credential.user!.uid);
+            return;
+          }
+        } catch (fbErr) {
+          debugPrint('Firebase signIn failed, attempting local fallback: $fbErr');
+        }
+      }
+
+      // Mock / Offline persistent mode
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 1. Look up in registered users or storage
+      var user = _storage.getUserByEmail(normalizedEmail);
+      user ??= _registeredUsers.cast<AppUser?>().firstWhere(
+            (u) => u?.email.trim().toLowerCase() == normalizedEmail,
+            orElse: () => null,
+          );
+
+      if (user != null) {
+        final savedPassword = _storage.getPassword(normalizedEmail);
+        if (savedPassword != null && savedPassword.trim() != trimmedPassword) {
+          throw Exception('Invalid password. Please check your password and try again.');
+        }
+        _currentUser = user;
+        await _storage.setActiveUserId(user.uid);
+      } else {
+        // If trying demo emails
+        if (normalizedEmail == 'customer@localserve.com') {
+          _currentUser = demoUsers[0];
+          await _storage.setActiveUserId(_currentUser!.uid);
+        } else if (normalizedEmail == 'worker@localserve.com') {
+          _currentUser = demoUsers[1];
+          await _storage.setActiveUserId(_currentUser!.uid);
+        } else {
+          throw Exception('No account found for "$trimmedEmail". Please register first to set up your mobile number and address.');
+        }
+      }
+    } finally {
       _isLoading = false;
       notifyListeners();
-      rethrow;
     }
   }
 

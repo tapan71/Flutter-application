@@ -10,6 +10,7 @@ import '../service_details_screen.dart';
 import '../history_screen.dart';
 import '../../widgets/notification_badge_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
+import '../../widgets/user_profile_dialog.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -27,6 +28,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<DatabaseService>().checkAndExpireDirectRequests();
+      }
+    });
   }
 
   @override
@@ -244,6 +250,322 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
     );
   }
 
+  Widget _buildDirectInvitationsSection(
+    BuildContext context,
+    ThemeData theme,
+    AppUser worker,
+    List<ServiceRequest> directInvitations,
+  ) {
+    if (directInvitations.isEmpty) return const SizedBox.shrink();
+
+    final dbService = context.read<DatabaseService>();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade400, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.shade200.withValues(alpha: 0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade700,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.timer_outlined, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Direct Job Invitations (${directInvitations.length})',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                      Text(
+                        '1-hour response limit. The customer selected you directly.',
+                        style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: directInvitations.length,
+              separatorBuilder: (context, index) => const Divider(height: 20),
+              itemBuilder: (ctx, i) {
+                final req = directInvitations[i];
+                final now = DateTime.now();
+                final diff = req.directRequestExpiresAt?.difference(now);
+                final minsRemaining = (diff != null && diff.inMinutes > 0) ? diff.inMinutes : 0;
+                final distanceStr = _getDistanceToJob(worker, req);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade200,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            req.service,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: minsRemaining <= 15 ? Colors.red.shade100 : Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: minsRemaining <= 15 ? Colors.red.shade400 : Colors.orange.shade400,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.access_time_filled,
+                                size: 13,
+                                color: minsRemaining <= 15 ? Colors.red.shade800 : Colors.orange.shade900,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '⏰ ${minsRemaining}m left',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: minsRemaining <= 15 ? Colors.red.shade800 : Colors.orange.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.person, size: 16, color: Colors.black87),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Customer: ${req.name}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        if (distanceStr != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '• $distanceStr',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (req.address.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 22),
+                        child: Text(
+                          'Location: ${req.address}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Problem Description:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            req.description,
+                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Actions: View Profile & Reviews | Accept | Decline
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        // View Customer Profile & Reviews
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.person_search_outlined, size: 16),
+                          label: const Text('Customer Profile & Reviews', style: TextStyle(fontSize: 11)),
+                          onPressed: () async {
+                            if (req.customerId == null || req.customerId!.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Customer profile details not found.')),
+                              );
+                              return;
+                            }
+                            final customerUser = await dbService.getUserById(req.customerId!);
+                            if (customerUser != null && context.mounted) {
+                              UserProfileDialog.show(context, user: customerUser);
+                            } else if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Could not load customer profile.')),
+                              );
+                            }
+                          },
+                        ),
+                        // Accept Request
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.green.shade700,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.check_circle, size: 16),
+                          label: const Text(
+                            'Accept Job',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () async {
+                            try {
+                              await dbService.acceptDirectRequest(
+                                requestId: req.id,
+                                workerId: worker.uid,
+                                workerName: worker.name,
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('You accepted the job for ${req.name}!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                                _tabController.animateTo(1);
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                        // Decline
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade300),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.close, size: 16),
+                          label: const Text('Decline', style: TextStyle(fontSize: 11)),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (dialogCtx) => AlertDialog(
+                                title: const Text('Decline Direct Request?'),
+                                content: Text(
+                                  'Are you sure you want to decline this direct request from ${req.name}?\n\nThe customer will be notified immediately.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogCtx, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                    onPressed: () => Navigator.pop(dialogCtx, true),
+                                    child: const Text('Decline Request'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await dbService.declineDirectRequest(
+                                requestId: req.id,
+                                workerId: worker.uid,
+                                workerName: worker.name,
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Request declined. Customer has been notified.'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
@@ -337,29 +659,42 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // TAB 1: Available Jobs (Pending)
+                // TAB 1: Available Jobs (Pending & Direct Invitations)
                 StreamBuilder<List<ServiceRequest>>(
-                  stream: dbService.streamAvailableRequests(skill: worker.workerSkill),
-                  builder: (context, snapshot) {
-                    final rawPending = snapshot.data ??
-                        dbService.allRequests.where((r) => r.status == 'pending').toList();
+                  stream: dbService.streamWorkerDirectInvitations(worker.uid),
+                  builder: (context, directSnapshot) {
+                    final directInvitations = directSnapshot.data ?? [];
 
-                    // Strictly filter so only requests matching the worker's skill are shown
-                    final allPending = rawPending.where((r) => _matchesWorkerSkill(worker, r)).toList();
+                    return StreamBuilder<List<ServiceRequest>>(
+                      stream: dbService.streamAvailableRequests(skill: worker.workerSkill),
+                      builder: (context, snapshot) {
+                        final rawPending = snapshot.data ??
+                            dbService.allRequests.where((r) => r.status == 'pending').toList();
 
-                    // Filter by 20 km if toggle is active and worker has location set
-                    final requests = (_filterWithin20Km && worker.hasLocation)
-                        ? allPending.where((r) {
-                            if (!r.hasLocation) return true;
-                            final km = _getDistanceKm(worker, r);
-                            return km == null || km <= DatabaseService.maxWorkerDistanceKm;
-                          }).toList()
-                        : allPending;
+                        // Strictly filter so only requests matching the worker's skill are shown
+                        final allPending = rawPending.where((r) => _matchesWorkerSkill(worker, r)).toList();
 
-                    return Column(
-                      children: [
-                        // Radius & Specialization Filter Header
-                        Container(
+                        // Filter by 20 km if toggle is active and worker has location set
+                        final requests = (_filterWithin20Km && worker.hasLocation)
+                            ? allPending.where((r) {
+                                if (!r.hasLocation) return true;
+                                final km = _getDistanceKm(worker, r);
+                                return km == null || km <= DatabaseService.maxWorkerDistanceKm;
+                              }).toList()
+                            : allPending;
+
+                        return Column(
+                          children: [
+                            // Direct Job Invitations Section (1 Hour Limit)
+                            _buildDirectInvitationsSection(
+                              context,
+                              theme,
+                              worker,
+                              directInvitations,
+                            ),
+
+                            // Radius & Specialization Filter Header
+                            Container(
                           margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
@@ -733,7 +1068,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                       ],
                     );
                   },
-                ),
+                );
+              },
+            ),
 
                 // TAB 2: My Active Jobs (Assigned to this worker)
                 StreamBuilder<List<ServiceRequest>>(
