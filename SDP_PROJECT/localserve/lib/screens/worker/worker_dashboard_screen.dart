@@ -11,6 +11,7 @@ import '../history_screen.dart';
 import '../../widgets/notification_badge_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
 import '../../widgets/user_profile_dialog.dart';
+import '../../widgets/submit_bill_dialog.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -1163,24 +1164,123 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                 Text('Customer: ${job.name} • ${job.mobile}'),
                                 Text('Address: ${job.address}'),
                                 const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: isDone ? Colors.green.shade50 : Colors.amber.shade50,
-                                    border: Border.all(
-                                      color: isDone ? Colors.green : Colors.amber.shade700,
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDone ? Colors.green.shade50 : Colors.amber.shade50,
+                                        border: Border.all(
+                                          color: isDone ? Colors.green : Colors.amber.shade700,
+                                        ),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        'Status: ${job.status.toUpperCase()}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDone ? Colors.green.shade900 : Colors.amber.shade900,
+                                        ),
+                                      ),
                                     ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    'Status: ${job.status.toUpperCase()}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDone ? Colors.green.shade900 : Colors.amber.shade900,
-                                    ),
-                                  ),
+                                    if (job.isPaid)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade50,
+                                          border: Border.all(color: Colors.green.shade600),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.check_circle, size: 12, color: Colors.green),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'PAID: ₹${job.totalAmount?.toStringAsFixed(0)} (Razorpay)',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green.shade900,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else if (job.isPaymentPending)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.amber.shade50,
+                                          border: Border.all(color: Colors.amber.shade700),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.pending_actions, size: 12, color: Colors.amber.shade900),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'BILL SENT: ₹${job.totalAmount?.toStringAsFixed(0)}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.amber.shade900,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          border: Border.all(color: Colors.blue.shade300),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.receipt_long, size: 12, color: Colors.blue.shade900),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'UNBILLED',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.blue.shade900,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
                                 ),
+                                if (!job.isPaid) ...[
+                                  const SizedBox(height: 8),
+                                  FilledButton.tonalIcon(
+                                    style: FilledButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    ),
+                                    icon: const Icon(Icons.receipt_long, size: 14),
+                                    label: Text(
+                                      job.isPaymentPending
+                                          ? 'Update Bill (₹${job.totalAmount?.toStringAsFixed(0)})'
+                                          : 'Decide Bill & Send to Customer',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                    onPressed: () => SubmitBillDialog.show(
+                                      context,
+                                      request: job,
+                                      worker: worker,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             trailing: PopupMenuButton<String>(
@@ -1204,6 +1304,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                       ),
                                     ),
                                   );
+                                } else if (val == 'bill') {
+                                  SubmitBillDialog.show(
+                                    context,
+                                    request: job,
+                                    worker: worker,
+                                  );
                                 } else if (val == 'progress') {
                                   await dbService.updateStatus(
                                     requestId: job.id,
@@ -1225,6 +1331,21 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                   const PopupMenuItem(
                                     value: 'map',
                                     child: Text('View on Map'),
+                                  ),
+                                if (!job.isPaid)
+                                  PopupMenuItem(
+                                    value: 'bill',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.receipt_long, size: 16, color: Colors.deepPurple),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          job.isPaymentPending
+                                              ? 'Update Bill'
+                                              : 'Decide Bill & Charge',
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 if (job.status != 'in_progress' && !isDone)
                                   const PopupMenuItem(

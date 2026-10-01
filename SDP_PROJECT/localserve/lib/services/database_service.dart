@@ -32,6 +32,20 @@ class DatabaseService extends ChangeNotifier {
     );
   }
 
+  /// Fixed condition assessment & inspection charge: ₹100
+  static const double inspectionFee = 100.0;
+
+  /// Extra service charge based on distance from worker's location to customer's location:
+  /// Under 10 km: ₹250
+  /// Under 20 km: ₹500
+  static double calculateDistanceFee(double? distanceKm) {
+    if (distanceKm == null || distanceKm <= 10.0) {
+      return 250.0;
+    } else {
+      return 500.0;
+    }
+  }
+
   // Initial seed data
   static final List<ServiceRequest> _defaultRequests = [
     ServiceRequest(
@@ -1178,6 +1192,184 @@ class DatabaseService extends ChangeNotifier {
         );
       }
     }
+  }
+
+  /// Worker submits finalized bill after inspecting the work on-site.
+  /// Distance fee: ₹250 (<10km) or ₹500 (<20km)
+  /// Fixed condition fee: ₹100
+  Future<ServiceRequest> submitBill({
+    required String requestId,
+    required double baseAmount,
+    required AppUser worker,
+    double? customerLat,
+    double? customerLng,
+  }) async {
+    ServiceRequest? targetReq;
+    final index = _mockRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      targetReq = _mockRequests[index];
+    }
+
+    if (_isFirebaseInitialized && targetReq == null) {
+      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+      if (doc.exists && doc.data() != null) {
+        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+      }
+    }
+
+    if (targetReq == null) {
+      throw Exception('Service request not found');
+    }
+
+    // Geodesic distance calculation
+    final double? distanceKm = calculateDistanceKm(
+      lat1: worker.latitude,
+      lon1: worker.longitude,
+      lat2: customerLat ?? targetReq.latitude,
+      lon2: customerLng ?? targetReq.longitude,
+    );
+
+    final double distanceFee = calculateDistanceFee(distanceKm);
+    const double inspection = inspectionFee;
+    final double total = baseAmount + inspection + distanceFee;
+
+    final updated = targetReq.copyWith(
+      baseAmount: baseAmount,
+      inspectionFee: inspection,
+      distanceFee: distanceFee,
+      distanceKm: distanceKm,
+      totalAmount: total,
+      paymentStatus: 'pending',
+    );
+
+    await updateRequest(updated);
+
+    // Send notification to customer
+    final customerUserId = updated.customerId ??
+        _mockUsers.where((u) => u.email.toLowerCase() == updated.email.toLowerCase()).firstOrNull?.uid;
+
+    if (customerUserId != null && customerUserId.isNotEmpty) {
+      await sendNotification(
+        userId: customerUserId,
+        title: 'Invoice: ₹${total.toStringAsFixed(0)} for ${updated.service}',
+        message: '${worker.name} evaluated the work condition and generated your bill of ₹${total.toStringAsFixed(0)} (Work: ₹${baseAmount.toStringAsFixed(0)}, Inspection: ₹100, Distance: ₹${distanceFee.toStringAsFixed(0)}). Tap to pay with Razorpay.',
+        type: 'payment_request',
+        requestId: updated.id,
+        relatedUserId: worker.uid,
+      );
+    }
+
+    return updated;
+  }
+
+  /// Mark payment as completed via Razorpay
+  Future<ServiceRequest> completePayment({
+    required String requestId,
+    required String paymentId,
+    required double amount,
+    String paymentMethod = 'Razorpay',
+  }) async {
+    ServiceRequest? targetReq;
+    final index = _mockRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      targetReq = _mockRequests[index];
+    }
+
+    if (_isFirebaseInitialized && targetReq == null) {
+      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+      if (doc.exists && doc.data() != null) {
+        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+      }
+    }
+
+    if (targetReq == null) {
+      throw Exception('Service request not found');
+    }
+
+    final updated = targetReq.copyWith(
+      paymentStatus: 'paid',
+      paymentId: paymentId,
+      paymentMethod: paymentMethod,
+      paidAt: DateTime.now(),
+    );
+
+    await updateRequest(updated);
+
+    // Notify worker
+    if (updated.workerId != null && updated.workerId!.isNotEmpty) {
+      await sendNotification(
+        userId: updated.workerId!,
+        title: 'Payment Received: ₹${amount.toStringAsFixed(0)}',
+        message: 'Customer ${updated.name} paid ₹${amount.toStringAsFixed(0)} for ${updated.service} via Razorpay (Payment ID: $paymentId).',
+        type: 'payment_received',
+        requestId: updated.id,
+      );
+    }
+
+    // Notify customer
+    final customerUserId = updated.customerId ??
+        _mockUsers.where((u) => u.email.toLowerCase() == updated.email.toLowerCase()).firstOrNull?.uid;
+
+    if (customerUserId != null && customerUserId.isNotEmpty) {
+      await sendNotification(
+        userId: customerUserId,
+        title: 'Payment Successful!',
+        message: 'Your payment of ₹${amount.toStringAsFixed(0)} for ${updated.service} was successfully received via Razorpay (Payment ID: $paymentId).',
+        type: 'payment_success',
+        requestId: updated.id,
+        relatedUserId: updated.workerId,
+      );
+    }
+
+    return updated;
+  }
+
+  /// Record payment failure / incomplete payment and notify customer to retry payment
+  Future<ServiceRequest> recordPaymentFailure({
+    required String requestId,
+    required String reason,
+    String? errorCode,
+  }) async {
+    ServiceRequest? targetReq;
+    final index = _mockRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      targetReq = _mockRequests[index];
+    }
+
+    if (_isFirebaseInitialized && targetReq == null) {
+      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+      if (doc.exists && doc.data() != null) {
+        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+      }
+    }
+
+    if (targetReq == null) {
+      throw Exception('Service request not found');
+    }
+
+    final updated = targetReq.copyWith(
+      paymentStatus: 'failed',
+    );
+
+    await updateRequest(updated);
+
+    // Notify customer to retry payment
+    final customerUserId = updated.customerId ??
+        _mockUsers.where((u) => u.email.toLowerCase() == updated.email.toLowerCase()).firstOrNull?.uid;
+
+    if (customerUserId != null && customerUserId.isNotEmpty) {
+      final amountStr = (updated.totalAmount ?? 0.0).toStringAsFixed(0);
+      await sendNotification(
+        userId: customerUserId,
+        title: 'Payment Incomplete - Retry Required',
+        message: 'Your Razorpay payment of ₹$amountStr for ${updated.service} was not completed ($reason). Please tap here to retry your payment.',
+        type: 'payment_failed',
+        requestId: updated.id,
+        relatedUserId: updated.workerId,
+      );
+    }
+
+    return updated;
   }
 
   Future<void> updateUserProfile({

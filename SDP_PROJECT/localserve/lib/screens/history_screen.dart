@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 import '../services/database_service.dart';
 import 'service_details_screen.dart';
 import 'service_request_screen.dart';
+import '../widgets/razorpay_payment_sheet.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({
@@ -576,6 +577,10 @@ class _HistoryScreenState extends State<HistoryScreen>
                     ),
                   ],
 
+                  if (req.isBilled) ...[
+                    _buildPaymentDetailsCard(req, theme, dbService),
+                  ],
+
                   const SizedBox(height: 12),
 
                   // Bottom action buttons
@@ -603,6 +608,32 @@ class _HistoryScreenState extends State<HistoryScreen>
                         },
                       ),
                       const SizedBox(width: 8),
+                      if (req.canPay) ...[
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: req.isPaymentFailed
+                                ? Colors.red.shade700
+                                : const Color(0xFF0C2340),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          icon: Icon(
+                            req.isPaymentFailed ? Icons.replay : Icons.payment,
+                            size: 16,
+                          ),
+                          label: Text(
+                            req.isPaymentFailed
+                                ? 'Retry Payment (₹${req.totalAmount?.toStringAsFixed(0)})'
+                                : 'Pay ₹${req.totalAmount?.toStringAsFixed(0)} (Razorpay)',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () =>
+                              _triggerRazorpayPayment(context, req, dbService),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       FilledButton.tonal(
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
@@ -631,5 +662,314 @@ class _HistoryScreenState extends State<HistoryScreen>
         );
       },
     );
+  }
+
+  Widget _buildPaymentDetailsCard(
+    ServiceRequest req,
+    ThemeData theme,
+    DatabaseService dbService,
+  ) {
+    final bool isPaid = req.isPaid;
+    final bool isFailed = req.isPaymentFailed;
+    final Color statusColor = isPaid
+        ? Colors.green.shade800
+        : (isFailed ? Colors.red.shade800 : Colors.amber.shade900);
+    final Color bgColor = isPaid
+        ? Colors.green.shade50.withValues(alpha: 0.7)
+        : (isFailed
+            ? Colors.red.shade50.withValues(alpha: 0.7)
+            : Colors.amber.shade50.withValues(alpha: 0.7));
+    final Color borderColor = isPaid
+        ? Colors.green.shade300
+        : (isFailed ? Colors.red.shade300 : Colors.amber.shade400);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Status Badge & Total Amount
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isPaid
+                        ? Icons.verified
+                        : (isFailed
+                            ? Icons.error_outline
+                            : Icons.pending_actions),
+                    size: 18,
+                    color: statusColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isPaid
+                        ? 'PAID VIA RAZORPAY'
+                        : (isFailed
+                            ? 'PAYMENT FAILED / RETRY'
+                            : 'PAYMENT DUE (WORKER BILLED)'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
+                      color: statusColor,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '₹${req.totalAmount?.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ),
+
+          const Divider(height: 16),
+
+          // Printed Itemized Breakdown:
+          Text(
+            'Printed Payment Details & Bill Breakdown:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // 1. Work Charge
+          _buildBillRow(
+            '• Work / Labor Charge (decided by worker)',
+            '₹${req.baseAmount?.toStringAsFixed(0) ?? "0"}',
+          ),
+          const SizedBox(height: 3),
+
+          // 2. Inspection Fee
+          _buildBillRow(
+            '• Work Condition Inspection Fee',
+            '₹${req.inspectionFee?.toStringAsFixed(0) ?? "100"}',
+            tag: 'Fixed ₹100',
+          ),
+          const SizedBox(height: 3),
+
+          // 3. Distance Fee
+          _buildBillRow(
+            req.distanceKm != null
+                ? '• Distance Charge (${req.distanceKm!.toStringAsFixed(1)} km from worker)'
+                : '• Distance Service Charge',
+            '₹${req.distanceFee?.toStringAsFixed(0) ?? "250"}',
+            tag: req.distanceKm != null && req.distanceKm! > 10.0
+                ? '< 20 km (₹500)'
+                : '< 10 km (₹250)',
+          ),
+
+          // If Paid: Print Transaction Details (Payment ID, Method, Date & Time)
+          if (isPaid) ...[
+            const Divider(height: 16),
+            Text(
+              'Razorpay Transaction Receipt:',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (req.paymentId != null)
+              _buildBillRow(
+                '• Razorpay Payment ID',
+                req.paymentId!,
+                isMonospace: true,
+              ),
+            _buildBillRow(
+              '• Payment Method',
+              req.paymentMethod ?? 'Razorpay (UPI / Card / NetBanking)',
+            ),
+            if (req.paidAt != null)
+              _buildBillRow(
+                '• Paid Date & Time',
+                _formatDateTime(req.paidAt!),
+              ),
+          ],
+
+          // If Payment Pending or Failed: Print Retry Payment Guidance
+          if (!isPaid) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isFailed ? Colors.red.shade200 : Colors.amber.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isFailed ? Icons.warning_amber_rounded : Icons.info_outline,
+                    size: 16,
+                    color: isFailed ? Colors.red.shade700 : Colors.amber.shade800,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isFailed
+                          ? 'Previous transaction was unsuccessful. Please tap "Retry Payment" to complete payment.'
+                          : 'Bill is generated. Tap "Pay via Razorpay" or "Retry Payment" below.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isFailed
+                            ? Colors.red.shade900
+                            : Colors.amber.shade900,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBillRow(
+    String label,
+    String value, {
+    String? tag,
+    bool isMonospace = false,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, color: Colors.black87),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (tag != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    border:
+                        Border.all(color: Colors.grey.shade400, width: 0.8),
+                  ),
+                  child: Text(
+                    tag,
+                    style:
+                        const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            fontFamily: isMonospace ? 'monospace' : null,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day.toString().padLeft(2, '0')} ${months[dt.month - 1]} ${dt.year}, $hour:$minute $ampm';
+  }
+
+  Future<void> _triggerRazorpayPayment(
+    BuildContext context,
+    ServiceRequest req,
+    DatabaseService dbService,
+  ) async {
+    final result = await RazorpayPaymentSheet.show(
+      context,
+      request: req,
+      customer: widget.currentUser,
+    );
+
+    if (result != null && context.mounted) {
+      await dbService.completePayment(
+        requestId: req.id,
+        paymentId: result.paymentId,
+        amount: result.amount,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment of ₹${result.amount.toStringAsFixed(0)} completed successfully via Razorpay (ID: ${result.paymentId})!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else if (context.mounted && !req.isPaid) {
+      await dbService.recordPaymentFailure(
+        requestId: req.id,
+        reason: 'Payment incomplete or cancelled by customer',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Payment was not completed. Tap "Retry Payment" to try again.',
+            ),
+            backgroundColor: Colors.deepOrange,
+            action: SnackBarAction(
+              label: 'Retry Now',
+              textColor: Colors.white,
+              onPressed: () => _triggerRazorpayPayment(context, req, dbService),
+            ),
+          ),
+        );
+      }
+    }
   }
 }

@@ -8,6 +8,8 @@ import '../services/database_service.dart';
 import '../widgets/map_preview_card.dart';
 import '../widgets/user_profile_dialog.dart';
 import '../widgets/review_dialog.dart';
+import '../widgets/submit_bill_dialog.dart';
+import '../widgets/razorpay_payment_sheet.dart';
 
 class ServiceDetailsScreen extends StatelessWidget {
   final ServiceRequest request;
@@ -493,6 +495,18 @@ class ServiceDetailsScreen extends StatelessWidget {
               ),
             ],
 
+            // SECTION: INVOICE & RAZORPAY PAYMENT
+            _buildBillingAndPaymentCard(
+              context: context,
+              currentReq: currentReq,
+              effectiveUser: effectiveUser,
+              isCustomerOwner: isCustomerOwner,
+              isAssignedWorker: isAssignedWorker,
+              isWorkerUser: isWorkerUser,
+              dbService: dbService,
+              theme: theme,
+            ),
+
             // SECTION: MUTUAL REVIEWS (AFTER COMPLETION)
             if (currentReq.completed) ...[
               Card(
@@ -955,6 +969,38 @@ class ServiceDetailsScreen extends StatelessWidget {
               const SizedBox(height: 12),
             ],
 
+            // WORKER GENERATE / UPDATE BILL ACTION BUTTON
+            if (isAssignedWorker &&
+                (currentReq.isAssigned || currentReq.isInProgress || currentReq.completed) &&
+                !currentReq.isCancelled &&
+                currentReq.status != 'cancelled') ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0C2340),
+                    side: const BorderSide(color: Color(0xFF0C2340), width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  icon: const Icon(Icons.receipt_long),
+                  label: Text(
+                    currentReq.isBilled
+                        ? 'Update Service Bill (Razorpay)'
+                        : 'Generate Service Bill (Inspect & Submit)',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () {
+                    SubmitBillDialog.show(
+                      context,
+                      request: currentReq,
+                      worker: effectiveUser!,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
             // BACK BUTTON
             SizedBox(
               width: double.infinity,
@@ -990,6 +1036,487 @@ class ServiceDetailsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBillingAndPaymentCard({
+    required BuildContext context,
+    required ServiceRequest currentReq,
+    required AppUser? effectiveUser,
+    required bool isCustomerOwner,
+    required bool isAssignedWorker,
+    required bool isWorkerUser,
+    required DatabaseService dbService,
+    required ThemeData theme,
+  }) {
+    if (currentReq.isCancelled || currentReq.status == 'cancelled') {
+      return const SizedBox.shrink();
+    }
+
+    final isPaid = currentReq.isPaid;
+    final isBilled = currentReq.isBilled;
+    final isPaymentPending = currentReq.isPaymentPending;
+
+    Color cardBorderColor = Colors.grey.shade300;
+    Color cardBgColor = Colors.white;
+
+    if (isPaid) {
+      cardBorderColor = Colors.green.shade400;
+      cardBgColor = Colors.green.shade50.withValues(alpha: 0.35);
+    } else if (isPaymentPending) {
+      cardBorderColor = const Color(0xFF0C2340);
+      cardBgColor = Colors.blue.shade50.withValues(alpha: 0.25);
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cardBorderColor, width: isPaymentPending ? 1.5 : 1),
+      ),
+      color: cardBgColor,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isPaid
+                            ? Colors.green.shade100
+                            : (isPaymentPending
+                                ? const Color(0xFF0C2340).withValues(alpha: 0.1)
+                                : Colors.grey.shade200),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isPaid ? Icons.verified : Icons.receipt_long_rounded,
+                        color: isPaid ? Colors.green.shade800 : const Color(0xFF0C2340),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Payment & Invoice',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Secured by Razorpay Gateway',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                // Status Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isPaid
+                        ? Colors.green.shade100
+                        : (isPaymentPending ? Colors.amber.shade100 : Colors.grey.shade200),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isPaid
+                          ? Colors.green.shade400
+                          : (isPaymentPending ? Colors.amber.shade400 : Colors.grey.shade400),
+                    ),
+                  ),
+                  child: Text(
+                    isPaid
+                        ? 'PAID VIA RAZORPAY'
+                        : (isPaymentPending ? 'PAYMENT PENDING' : 'NOT BILLED YET'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isPaid
+                          ? Colors.green.shade900
+                          : (isPaymentPending ? Colors.amber.shade900 : Colors.grey.shade700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const Divider(height: 24),
+
+            // If NOT billed yet:
+            if (!isBilled) ...[
+              if (isAssignedWorker) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.engineering_outlined, color: Colors.blue, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Inspect the condition of work on-site, enter the work/parts charge, and submit the invoice to the customer.',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.add_card, size: 18),
+                    label: const Text('Generate Service Bill (Inspect & Submit)'),
+                    onPressed: () {
+                      SubmitBillDialog.show(
+                        context,
+                        request: currentReq,
+                        worker: effectiveUser!,
+                      );
+                    },
+                  ),
+                ),
+              ] else if (isCustomerOwner) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber.shade900, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Your worker (${currentReq.workerName ?? "Worker"}) will inspect the condition of work and submit your itemized invoice here.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                const Text(
+                  'No invoice generated yet for this request.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+              ],
+            ]
+
+            // If billed (either pending or paid):
+            else ...[
+              // Breakdown details
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    _buildInvoiceRow(
+                      'Work / Service Charge (Decided by worker):',
+                      '₹${currentReq.baseAmount?.toStringAsFixed(0) ?? "0"}',
+                    ),
+                    const SizedBox(height: 6),
+                    _buildInvoiceRow(
+                      'Condition Inspection Fee (Showing work condition):',
+                      '₹${currentReq.inspectionFee?.toStringAsFixed(0) ?? "100"}',
+                      badge: 'Fixed ₹100',
+                    ),
+                    const SizedBox(height: 6),
+                    _buildInvoiceRow(
+                      currentReq.distanceKm != null
+                          ? 'Distance Travel Fee (${currentReq.distanceKm!.toStringAsFixed(1)} km):'
+                          : 'Distance Travel Fee:',
+                      '₹${currentReq.distanceFee?.toStringAsFixed(0) ?? "250"}',
+                      badge: currentReq.distanceKm != null && currentReq.distanceKm! <= 10.0
+                          ? '< 10 km (₹250)'
+                          : '< 20 km (₹500)',
+                    ),
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Payable Amount:',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '₹${currentReq.totalAmount?.toStringAsFixed(0) ?? "0"}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isPaid ? Colors.green.shade800 : theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // If PAID:
+              if (isPaid) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green.shade800, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Paid via Razorpay (${currentReq.paymentMethod ?? "Online"})',
+                            style: TextStyle(
+                              color: Colors.green.shade900,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Razorpay Payment ID: ${currentReq.paymentId ?? "pay_confirmed"}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green.shade900,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      if (currentReq.paidAt != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Paid on: ${currentReq.paidAt!.day}/${currentReq.paidAt!.month}/${currentReq.paidAt!.year} at ${currentReq.paidAt!.hour}:${currentReq.paidAt!.minute.toString().padLeft(2, '0')}',
+                          style: TextStyle(fontSize: 11, color: Colors.green.shade800),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ]
+
+              // If PENDING OR FAILED (canPay):
+              else if (currentReq.canPay) ...[
+                if (isCustomerOwner) ...[
+                  if (currentReq.isPaymentFailed) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Previous transaction was not completed. Tap "Retry Payment" to complete securely with Razorpay.',
+                              style: TextStyle(
+                                color: Colors.red.shade900,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0C2340), // Official Razorpay Dark Navy
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      icon: Icon(
+                        currentReq.isPaymentFailed ? Icons.replay : Icons.lock,
+                        size: 18,
+                        color: const Color(0xFF3395FF),
+                      ),
+                      label: Text(
+                        currentReq.isPaymentFailed
+                            ? 'Retry Payment (₹${currentReq.totalAmount?.toStringAsFixed(0) ?? "0"}) with Razorpay'
+                            : 'Pay ₹${currentReq.totalAmount?.toStringAsFixed(0) ?? "0"} via Razorpay',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () async {
+                        final result = await RazorpayPaymentSheet.show(
+                          context,
+                          request: currentReq,
+                          customer: effectiveUser!,
+                        );
+
+                        if (result != null && context.mounted) {
+                          await dbService.completePayment(
+                            requestId: currentReq.id,
+                            paymentId: result.paymentId,
+                            amount: result.amount,
+                          );
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Payment of ₹${result.amount.toStringAsFixed(0)} completed successfully via Razorpay (ID: ${result.paymentId})!',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } else if (context.mounted && !currentReq.isPaid) {
+                          await dbService.recordPaymentFailure(
+                            requestId: currentReq.id,
+                            reason: 'Payment incomplete or cancelled by customer',
+                          );
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Payment was not completed. You can tap "Retry Payment" whenever you are ready.',
+                                ),
+                                backgroundColor: Colors.deepOrange,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Center(
+                    child: Text(
+                      'Supports UPI (GPay, PhonePe, Paytm), Debit/Credit Cards & NetBanking',
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ),
+                ] else if (isAssignedWorker) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit, size: 16),
+                          label: const Text('Update Bill'),
+                          onPressed: () {
+                            SubmitBillDialog.show(
+                              context,
+                              request: currentReq,
+                              worker: effectiveUser!,
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: const Text(
+                            'Customer notified to pay via Razorpay',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoiceRow(String label, String amount, {String? badge}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (badge != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Text(
+          amount,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 }

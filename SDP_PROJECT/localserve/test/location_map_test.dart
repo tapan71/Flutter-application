@@ -7,6 +7,7 @@ import 'package:localserve/services/geocoding_service.dart';
 import 'package:localserve/services/auth_service.dart';
 import 'package:localserve/services/database_service.dart';
 import 'package:localserve/services/local_storage_service.dart';
+import 'package:localserve/services/razorpay_service.dart';
 
 void main() {
   setUp(() {
@@ -563,6 +564,327 @@ void main() {
 
       final custReviews = db.getReviewsForUser(customerId);
       expect(custReviews.any((r) => r.id == 'rev_w1_cust'), isTrue);
+    });
+  });
+
+  group('Razorpay Payment & Distance-based Service Charge Tests', () {
+    test('Inspection charge is exactly 100 rupees', () {
+      expect(DatabaseService.inspectionFee, 100.0);
+    });
+
+    test('Distance fee calculates 250 under 10 km and 500 under 20 km', () {
+      // <= 10 km -> 250
+      expect(DatabaseService.calculateDistanceFee(0.0), 250.0);
+      expect(DatabaseService.calculateDistanceFee(4.5), 250.0);
+      expect(DatabaseService.calculateDistanceFee(10.0), 250.0);
+
+      // > 10 km and <= 20 km -> 500
+      expect(DatabaseService.calculateDistanceFee(10.1), 500.0);
+      expect(DatabaseService.calculateDistanceFee(15.0), 500.0);
+      expect(DatabaseService.calculateDistanceFee(20.0), 500.0);
+
+      // Null or edge distance fallback defaults to under-10km base
+      expect(DatabaseService.calculateDistanceFee(null), 250.0);
+    });
+
+    test('Worker decides payment after inspection; notification sent to customer', () async {
+      final db = DatabaseService();
+
+      // Create worker and customer
+      const worker = AppUser(
+        uid: 'w_electrician_1',
+        name: 'Ramesh Patel',
+        email: 'ramesh@example.com',
+        mobile: '9876543210',
+        role: UserRole.worker,
+        workerSkill: 'Electrical',
+        latitude: 23.0225, // Navrangpura
+        longitude: 72.5714,
+        address: 'Navrangpura, Ahmedabad',
+      );
+
+      const customer = AppUser(
+        uid: 'c_priya_1',
+        name: 'Priya Shah',
+        email: 'priya@example.com',
+        mobile: '9123456780',
+        role: UserRole.customer,
+        latitude: 23.0400, // ~2.5 km away (< 10 km)
+        longitude: 72.5800,
+        address: 'Usmanpura, Ahmedabad',
+      );
+
+      final req = ServiceRequest(
+        id: 'req_electrical_pay_test',
+        name: customer.name,
+        email: customer.email,
+        mobile: customer.mobile,
+        address: customer.address ?? '',
+        latitude: customer.latitude,
+        longitude: customer.longitude,
+        service: 'Electrical',
+        priority: 'High',
+        description: 'Short circuit in kitchen main switchboard',
+        status: 'in_progress',
+        reminder: false,
+        customerId: customer.uid,
+        workerId: worker.uid,
+        workerName: worker.name,
+        createdAt: DateTime.now(),
+      );
+
+      await db.addRequest(req);
+
+      // Worker assesses work and decides base charge = 350
+      // Condition inspection fee = 100
+      // Distance fee (< 10 km) = 250
+      // Total expected = 350 + 100 + 250 = 700
+      await db.submitBill(
+        requestId: req.id,
+        worker: worker,
+        baseAmount: 350.0,
+      );
+
+      final billedReq = db.allRequests.firstWhere((r) => r.id == req.id);
+      expect(billedReq.isBilled, isTrue);
+      expect(billedReq.isPaymentPending, isTrue);
+      expect(billedReq.isPaid, isFalse);
+      expect(billedReq.baseAmount, 350.0);
+      expect(billedReq.inspectionFee, 100.0);
+      expect(billedReq.distanceFee, 250.0);
+      expect(billedReq.distanceKm, isNotNull);
+      expect(billedReq.distanceKm!, lessThan(10.0));
+      expect(billedReq.totalAmount, 700.0);
+      expect(billedReq.paymentStatus, 'pending');
+
+      // Verify customer received notification
+      final customerNotifs = db.getNotifications(customer.uid);
+      expect(customerNotifs.isNotEmpty, isTrue);
+      final billNotif = customerNotifs.firstWhere((n) => n.type == 'payment_request');
+      expect(billNotif.title, contains('Invoice: ₹700'));
+      expect(billNotif.message, contains('700'));
+      expect(billNotif.message, contains('₹100'));
+      expect(billNotif.message, contains('₹250'));
+    });
+
+    test('Worker submits bill for job between 10 km and 20 km; charges 500 distance fee', () async {
+      final db = DatabaseService();
+
+      const worker = AppUser(
+        uid: 'w_plumber_2',
+        name: 'Suresh Kumar',
+        email: 'suresh@example.com',
+        mobile: '9876500000',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+        latitude: 23.0225,
+        longitude: 72.5714,
+      );
+
+      // Customer ~15 km away (still under 20 km)
+      // 0.13 deg latitude approx 14.5 km
+      const customer = AppUser(
+        uid: 'c_distant_1',
+        name: 'Amit Joshi',
+        email: 'amit@example.com',
+        mobile: '9123400000',
+        role: UserRole.customer,
+        latitude: 23.1550,
+        longitude: 72.5714,
+      );
+
+      final req = ServiceRequest(
+        id: 'req_distance_500_test',
+        name: customer.name,
+        email: customer.email,
+        mobile: customer.mobile,
+        address: 'Bopal Extension, Ahmedabad',
+        latitude: customer.latitude,
+        longitude: customer.longitude,
+        service: 'Plumbing',
+        priority: 'Normal',
+        description: 'Water pressure pump repair',
+        status: 'in_progress',
+        reminder: false,
+        customerId: customer.uid,
+        workerId: worker.uid,
+        workerName: worker.name,
+        createdAt: DateTime.now(),
+      );
+
+      await db.addRequest(req);
+
+      // Base amount = 400
+      // Inspection = 100
+      // Distance fee (>10 km, <=20 km) = 500
+      // Total = 400 + 100 + 500 = 1000
+      await db.submitBill(
+        requestId: req.id,
+        worker: worker,
+        baseAmount: 400.0,
+      );
+
+      final billedReq = db.allRequests.firstWhere((r) => r.id == req.id);
+      expect(billedReq.distanceKm, isNotNull);
+      expect(billedReq.distanceKm!, greaterThan(10.0));
+      expect(billedReq.distanceKm!, lessThanOrEqualTo(20.0));
+      expect(billedReq.distanceFee, 500.0);
+      expect(billedReq.inspectionFee, 100.0);
+      expect(billedReq.baseAmount, 400.0);
+      expect(billedReq.totalAmount, 1000.0);
+    });
+
+    test('Customer completes Razorpay payment; status updates to paid and sends receipt notifications', () async {
+      final db = DatabaseService();
+
+      const workerId = 'w_carpenter_9';
+      const customerId = 'c_neha_9';
+
+      final billedRequest = ServiceRequest(
+        id: 'req_razorpay_checkout_test',
+        name: 'Neha Verma',
+        email: 'neha@example.com',
+        mobile: '9988776655',
+        address: 'Satellite, Ahmedabad',
+        service: 'Carpentry',
+        priority: 'Normal',
+        description: 'Door lock and hinge replacement',
+        status: 'in_progress',
+        reminder: false,
+        customerId: customerId,
+        workerId: workerId,
+        workerName: 'Vikram Carpenter',
+        baseAmount: 300.0,
+        inspectionFee: 100.0,
+        distanceFee: 250.0,
+        totalAmount: 650.0,
+        paymentStatus: 'pending',
+        createdAt: DateTime.now(),
+      );
+
+      await db.addRequest(billedRequest);
+
+      // Generate Razorpay transaction
+      final paymentId = RazorpayService.generatePaymentId();
+      expect(paymentId.startsWith('pay_'), isTrue);
+
+      // Customer completes payment
+      await db.completePayment(
+        requestId: billedRequest.id,
+        paymentId: paymentId,
+        amount: 650.0,
+        paymentMethod: 'razorpay',
+      );
+
+      final paidReq = db.allRequests.firstWhere((r) => r.id == billedRequest.id);
+      expect(paidReq.isPaid, isTrue);
+      expect(paidReq.isPaymentPending, isFalse);
+      expect(paidReq.paymentStatus, 'paid');
+      expect(paidReq.paymentId, paymentId);
+      expect(paidReq.paymentMethod, 'razorpay');
+      expect(paidReq.paidAt, isNotNull);
+
+      // Verify worker received payment notification
+      final workerNotifs = db.getNotifications(workerId);
+      final workerPayNotif = workerNotifs.firstWhere((n) => n.type == 'payment_received');
+      expect(workerPayNotif.title, contains('Payment Received: ₹650'));
+      expect(workerPayNotif.message, contains('₹650'));
+      expect(workerPayNotif.message, contains(paymentId));
+
+      // Verify customer received payment receipt notification
+      final customerNotifs = db.getNotifications(customerId);
+      final custReceiptNotif = customerNotifs.firstWhere((n) => n.type == 'payment_success');
+      expect(custReceiptNotif.title, contains('Payment Successful!'));
+      expect(custReceiptNotif.message, contains('₹650'));
+      expect(custReceiptNotif.message, contains(paymentId));
+    });
+
+    test('Payment failure notifies customer to retry, and retrying completes payment with notifications to both sides', () async {
+      final db = DatabaseService();
+
+      const workerId = 'w_retry_worker';
+      const customerId = 'c_retry_customer';
+
+      final pendingReq = ServiceRequest(
+        id: 'req_retry_payment_test',
+        name: 'Aarav Mehta',
+        email: 'aarav@example.com',
+        mobile: '9898001122',
+        address: 'CG Road, Ahmedabad',
+        service: 'Electrical',
+        priority: 'High',
+        description: 'Inverter wiring breakdown',
+        status: 'in_progress',
+        reminder: false,
+        customerId: customerId,
+        workerId: workerId,
+        workerName: 'Kishore Electrician',
+        baseAmount: 500.0,
+        inspectionFee: 100.0,
+        distanceFee: 250.0,
+        distanceKm: 3.2,
+        totalAmount: 850.0,
+        paymentStatus: 'pending',
+        createdAt: DateTime.now(),
+      );
+
+      await db.addRequest(pendingReq);
+
+      // 1. Payment fails or is incomplete
+      await db.recordPaymentFailure(
+        requestId: pendingReq.id,
+        reason: 'Bank authorization timed out',
+      );
+
+      final failedReq = db.allRequests.firstWhere((r) => r.id == pendingReq.id);
+      expect(failedReq.isPaymentFailed, isTrue);
+      expect(failedReq.canPay, isTrue);
+      expect(failedReq.paymentStatus, 'failed');
+
+      // Verify customer received retry payment notification
+      final custNotifs = db.getNotifications(customerId);
+      final retryNotif = custNotifs.firstWhere((n) => n.type == 'payment_failed');
+      expect(retryNotif.title, contains('Payment Incomplete'));
+      expect(retryNotif.message, contains('₹850'));
+      expect(retryNotif.message, contains('retry'));
+
+      // 2. Customer retries payment via Razorpay successfully
+      final newPaymentId = RazorpayService.generatePaymentId();
+      await db.completePayment(
+        requestId: pendingReq.id,
+        paymentId: newPaymentId,
+        amount: 850.0,
+        paymentMethod: 'Razorpay UPI',
+      );
+
+      final completedReq = db.allRequests.firstWhere((r) => r.id == pendingReq.id);
+      expect(completedReq.isPaid, isTrue);
+      expect(completedReq.isPaymentFailed, isFalse);
+      expect(completedReq.canPay, isFalse);
+      expect(completedReq.paymentStatus, 'paid');
+      expect(completedReq.paymentId, newPaymentId);
+
+      // Verify payment details printed in history are complete
+      expect(completedReq.baseAmount, 500.0);
+      expect(completedReq.inspectionFee, 100.0);
+      expect(completedReq.distanceFee, 250.0);
+      expect(completedReq.distanceKm, 3.2);
+      expect(completedReq.totalAmount, 850.0);
+      expect(completedReq.paymentMethod, 'Razorpay UPI');
+      expect(completedReq.paidAt, isNotNull);
+
+      // Verify BOTH sides received success notification
+      // Worker received payment confirmation
+      final workerNotifs = db.getNotifications(workerId);
+      final wNotif = workerNotifs.firstWhere((n) => n.type == 'payment_received');
+      expect(wNotif.title, contains('Payment Received: ₹850'));
+      expect(wNotif.message, contains(newPaymentId));
+
+      // Customer received receipt confirmation
+      final updatedCustNotifs = db.getNotifications(customerId);
+      final cSuccessNotif = updatedCustNotifs.firstWhere((n) => n.type == 'payment_success');
+      expect(cSuccessNotif.title, contains('Payment Successful!'));
+      expect(cSuccessNotif.message, contains(newPaymentId));
     });
   });
 }

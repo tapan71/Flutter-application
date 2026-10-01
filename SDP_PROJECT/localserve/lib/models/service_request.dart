@@ -24,6 +24,17 @@ class ServiceRequest {
   final bool customerReviewed;
   final bool workerReviewed;
 
+  // Payment & Billing Fields
+  final double? baseAmount; // Work charge decided by worker
+  final double? inspectionFee; // Fixed 100 Rs condition assessment fee
+  final double? distanceFee; // 250 Rs (<10 km) or 500 Rs (<20 km)
+  final double? distanceKm;
+  final double? totalAmount; // baseAmount + inspectionFee + distanceFee
+  final String? paymentStatus; // 'unbilled', 'pending', 'paid', 'failed'
+  final String? paymentId; // Razorpay payment ID (e.g. pay_...)
+  final String? paymentMethod; // e.g. 'Razorpay'
+  final DateTime? paidAt;
+
   ServiceRequest({
     required this.id,
     required this.service,
@@ -50,6 +61,15 @@ class ServiceRequest {
     this.declinedWorkerIds = const [],
     this.customerReviewed = false,
     this.workerReviewed = false,
+    this.baseAmount,
+    this.inspectionFee,
+    this.distanceFee,
+    this.distanceKm,
+    this.totalAmount,
+    this.paymentStatus,
+    this.paymentId,
+    this.paymentMethod,
+    this.paidAt,
   }) : status = status ?? (completed ? 'completed' : 'pending');
 
   bool get completed => status == 'completed';
@@ -68,6 +88,13 @@ class ServiceRequest {
       DateTime.now().isAfter(directRequestExpiresAt!);
 
   bool get hasLocation => latitude != null && longitude != null;
+
+  // Billing getters
+  bool get isBilled => totalAmount != null && totalAmount! > 0;
+  bool get isPaid => paymentStatus == 'paid';
+  bool get isPaymentPending => paymentStatus == 'pending';
+  bool get isPaymentFailed => paymentStatus == 'failed';
+  bool get canPay => isBilled && !isPaid;
 
   ServiceRequest copyWith({
     String? id,
@@ -95,6 +122,15 @@ class ServiceRequest {
     List<String>? declinedWorkerIds,
     bool? customerReviewed,
     bool? workerReviewed,
+    double? baseAmount,
+    double? inspectionFee,
+    double? distanceFee,
+    double? distanceKm,
+    double? totalAmount,
+    String? paymentStatus,
+    String? paymentId,
+    String? paymentMethod,
+    DateTime? paidAt,
   }) {
     String finalStatus = status ?? this.status;
     if (completed != null && status == null) {
@@ -126,6 +162,15 @@ class ServiceRequest {
       declinedWorkerIds: declinedWorkerIds ?? this.declinedWorkerIds,
       customerReviewed: customerReviewed ?? this.customerReviewed,
       workerReviewed: workerReviewed ?? this.workerReviewed,
+      baseAmount: baseAmount ?? this.baseAmount,
+      inspectionFee: inspectionFee ?? this.inspectionFee,
+      distanceFee: distanceFee ?? this.distanceFee,
+      distanceKm: distanceKm ?? this.distanceKm,
+      totalAmount: totalAmount ?? this.totalAmount,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentId: paymentId ?? this.paymentId,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paidAt: paidAt ?? this.paidAt,
     );
   }
 
@@ -155,6 +200,15 @@ class ServiceRequest {
       'declinedWorkerIds': declinedWorkerIds,
       'customerReviewed': customerReviewed,
       'workerReviewed': workerReviewed,
+      'baseAmount': baseAmount,
+      'inspectionFee': inspectionFee,
+      'distanceFee': distanceFee,
+      'distanceKm': distanceKm,
+      'totalAmount': totalAmount,
+      'paymentStatus': paymentStatus,
+      'paymentId': paymentId,
+      'paymentMethod': paymentMethod,
+      'paidAt': paidAt?.toIso8601String(),
     };
   }
 
@@ -197,6 +251,17 @@ class ServiceRequest {
           : const [],
       customerReviewed: map['customerReviewed'] as bool? ?? false,
       workerReviewed: map['workerReviewed'] as bool? ?? false,
+      baseAmount: map['baseAmount'] != null ? (map['baseAmount'] as num).toDouble() : null,
+      inspectionFee: map['inspectionFee'] != null ? (map['inspectionFee'] as num).toDouble() : null,
+      distanceFee: map['distanceFee'] != null ? (map['distanceFee'] as num).toDouble() : null,
+      distanceKm: map['distanceKm'] != null ? (map['distanceKm'] as num).toDouble() : null,
+      totalAmount: map['totalAmount'] != null ? (map['totalAmount'] as num).toDouble() : null,
+      paymentStatus: map['paymentStatus'] as String?,
+      paymentId: map['paymentId'] as String?,
+      paymentMethod: map['paymentMethod'] as String?,
+      paidAt: map['paidAt'] != null
+          ? DateTime.tryParse(map['paidAt'].toString())
+          : null,
     );
   }
 }
