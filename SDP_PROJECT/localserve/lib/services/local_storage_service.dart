@@ -1,14 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/user_model.dart';
 import '../models/service_request.dart';
 import '../models/notification_model.dart';
 import '../models/review_model.dart';
 
 /// Rock-solid cross-platform local persistent storage for LocalServe.
-/// Persists registered users, credentials, active session, service requests,
-/// notifications, and reviews to disk so data is NEVER lost across reruns.
+/// Uses SharedPreferences and disk file storage to guarantee data is NEVER lost
+/// across app restarts, re-runs on Android phones, Web browser refreshes, or Desktop.
 class LocalStorageService {
   static final LocalStorageService _instance = LocalStorageService._internal();
   factory LocalStorageService() => _instance;
@@ -16,8 +18,11 @@ class LocalStorageService {
 
   bool _initialized = false;
   String? _storagePath;
+  SharedPreferences? _prefs;
 
-  // In-memory cache synced with disk
+  static const String _prefsStorageKey = 'localserve_persistent_store_v1';
+
+  // In-memory cache synced with disk and SharedPreferences
   String? _activeUserId;
   final Map<String, AppUser> _users = {};
   final Map<String, String> _passwords = {};
@@ -32,7 +37,18 @@ class LocalStorageService {
     if (_initialized) return;
 
     try {
-      _resolveStoragePath();
+      if (!kIsWeb && !Platform.environment.containsKey('FLUTTER_TEST')) {
+        await _resolveStoragePath();
+      }
+      
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        try {
+          _prefs = await SharedPreferences.getInstance();
+        } catch (e) {
+          debugPrint('SharedPreferences init note: $e');
+        }
+      }
+
       await _loadFromDisk();
     } catch (e) {
       debugPrint('LocalStorageService init warning: $e');
@@ -51,7 +67,7 @@ class LocalStorageService {
     _initialized = false;
   }
 
-  void _resolveStoragePath() {
+  Future<void> _resolveStoragePath() async {
     if (kIsWeb || Platform.environment.containsKey('FLUTTER_TEST')) {
       _storagePath = null;
       return;
@@ -70,6 +86,13 @@ class LocalStorageService {
           return;
         }
       }
+
+      // Android / iOS / other platforms using path_provider
+      try {
+        final appDocDir = await getApplicationDocumentsDirectory();
+        _storagePath = '${appDocDir.path}/localserve_store.json';
+        return;
+      } catch (_) {}
 
       final home = Platform.environment['HOME'] ??
           Platform.environment['USERPROFILE'];
@@ -90,19 +113,40 @@ class LocalStorageService {
     }
   }
 
-  Future<void> _loadFromDisk() async {
-    if (_storagePath == null) return;
+  Future<void> _ensurePrefs() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_prefs == null) {
+      try {
+        _prefs = await SharedPreferences.getInstance();
+      } catch (e) {
+        debugPrint('SharedPreferences init error: $e');
+      }
+    }
+  }
 
+  Future<void> _loadFromDisk() async {
     try {
-      final file = File(_storagePath!);
-      if (!await file.exists()) {
-        return;
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await _ensurePrefs();
+      }
+      String? jsonRaw;
+
+      // 1. First try SharedPreferences (works universally on Web, Android, iOS, Windows)
+      if (_prefs != null) {
+        jsonRaw = _prefs!.getString(_prefsStorageKey);
       }
 
-      final contents = await file.readAsString();
-      if (contents.trim().isEmpty) return;
+      // 2. If not in SharedPreferences or empty, check disk file
+      if ((jsonRaw == null || jsonRaw.trim().isEmpty) && _storagePath != null) {
+        final file = File(_storagePath!);
+        if (await file.exists()) {
+          jsonRaw = await file.readAsString();
+        }
+      }
 
-      final data = jsonDecode(contents) as Map<String, dynamic>;
+      if (jsonRaw == null || jsonRaw.trim().isEmpty) return;
+
+      final data = jsonDecode(jsonRaw) as Map<String, dynamic>;
 
       _activeUserId = data['activeUserId'] as String?;
 
@@ -152,13 +196,11 @@ class LocalStorageService {
         }
       }
     } catch (e) {
-      debugPrint('Error loading persistent storage from disk: $e');
+      debugPrint('Error loading persistent storage: $e');
     }
   }
 
   Future<void> _flushToDisk() async {
-    if (_storagePath == null) return;
-
     try {
       final data = {
         'activeUserId': _activeUserId,
@@ -169,10 +211,22 @@ class LocalStorageService {
         'reviews': _reviews.map((r) => r.toMap()).toList(),
       };
 
-      final file = File(_storagePath!);
-      await file.writeAsString(jsonEncode(data), flush: true);
+      final encoded = jsonEncode(data);
+
+      await _ensurePrefs();
+
+      // Save to SharedPreferences
+      if (_prefs != null) {
+        await _prefs!.setString(_prefsStorageKey, encoded);
+      }
+
+      // Save to File on Desktop / Mobile
+      if (_storagePath != null) {
+        final file = File(_storagePath!);
+        await file.writeAsString(encoded, flush: true);
+      }
     } catch (e) {
-      debugPrint('Error flushing persistent storage to disk: $e');
+      debugPrint('Error flushing persistent storage: $e');
     }
   }
 

@@ -69,6 +69,8 @@ void main() {
 
       final workerChip = find.widgetWithText(ActionChip, 'Worker Demo');
       expect(workerChip, findsOneWidget);
+      await tester.ensureVisible(workerChip);
+      await tester.pumpAndSettle();
 
       await tester.tap(workerChip);
       await tester.pumpAndSettle();

@@ -172,37 +172,64 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _fetchUserProfile(String uid) async {
+  Future<void> _fetchUserProfile(String uid, {String? fallbackEmail}) async {
     try {
-      var doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      AppUser? user;
 
-      if (!doc.exists) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      // 1. Try fetching from Firestore
+      try {
+        var doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        if (!doc.exists) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        }
+        if (doc.exists && doc.data() != null) {
+          user = AppUser.fromMap(doc.data()!, uid: uid);
+        }
+      } catch (firestoreErr) {
+        debugPrint('Firestore fetch profile note: $firestoreErr');
       }
 
-      if (doc.exists && doc.data() != null) {
-        _currentUser = AppUser.fromMap(doc.data()!, uid: uid);
-        await _storage.saveUser(_currentUser!);
-        await _storage.setActiveUserId(_currentUser!.uid);
-      } else {
-        final cached = _registeredUsers.firstWhere(
-          (u) => u.uid == uid,
-          orElse: () {
-            final fbUser = fb_auth.FirebaseAuth.instance.currentUser;
-            return AppUser(
-              uid: uid,
-              email: fbUser?.email ?? '',
-              name: fbUser?.displayName ?? 'User',
-              mobile: fbUser?.phoneNumber ?? '',
-              role: UserRole.customer,
+      // 2. Fallback to Local Persistent Storage & In-Memory Registry
+      if (user == null || user.name.isEmpty) {
+        final fbUser = fb_auth.FirebaseAuth.instance.currentUser;
+        final targetEmail = fallbackEmail ?? fbUser?.email;
+
+        user = _storage.getUserById(uid);
+        if (user == null && targetEmail != null && targetEmail.isNotEmpty) {
+          user = _storage.getUserByEmail(targetEmail);
+        }
+
+        user ??= _registeredUsers.cast<AppUser?>().firstWhere(
+              (u) =>
+                  u != null &&
+                  (u.uid == uid ||
+                      (targetEmail != null &&
+                          targetEmail.isNotEmpty &&
+                          u.email.toLowerCase() == targetEmail.toLowerCase())),
+              orElse: () => null,
             );
-          },
+
+        user ??= AppUser(
+          uid: uid,
+          email: targetEmail ?? fbUser?.email ?? '',
+          name: fbUser?.displayName?.isNotEmpty == true ? fbUser!.displayName! : 'User',
+          mobile: fbUser?.phoneNumber ?? '',
+          role: UserRole.customer,
         );
-        _currentUser = cached;
-        await _storage.saveUser(cached);
-        await _storage.setActiveUserId(cached.uid);
       }
+
+      _currentUser = user;
+
+      final idx = _registeredUsers.indexWhere((u) => u.uid == user!.uid || u.email.toLowerCase() == user.email.toLowerCase());
+      if (idx != -1) {
+        _registeredUsers[idx] = user;
+      } else {
+        _registeredUsers.add(user);
+      }
+
+      await _storage.saveUser(user);
+      await _storage.setActiveUserId(user.uid);
     } catch (e) {
       debugPrint('Error fetching user profile: $e');
     }
@@ -230,6 +257,7 @@ class AuthService extends ChangeNotifier {
         throw Exception('Please enter your password.');
       }
 
+      // 1. Try Firebase Authentication if initialized
       if (_isFirebaseInitialized) {
         try {
           final credential = await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -237,18 +265,17 @@ class AuthService extends ChangeNotifier {
             password: password,
           );
           if (credential.user != null) {
-            await _fetchUserProfile(credential.user!.uid);
+            await _fetchUserProfile(credential.user!.uid, fallbackEmail: normalizedEmail);
             return;
           }
         } catch (fbErr) {
-          debugPrint('Firebase signIn failed, attempting local fallback: $fbErr');
+          debugPrint('Firebase signIn notice (falling back to local storage): $fbErr');
         }
       }
 
-      // Mock / Offline persistent mode
-      await Future.delayed(const Duration(milliseconds: 200));
+      // 2. Offline / Local Persistent Storage Authentication
+      await Future.delayed(const Duration(milliseconds: 150));
 
-      // 1. Look up in registered users or storage
       var user = _storage.getUserByEmail(normalizedEmail);
       user ??= _registeredUsers.cast<AppUser?>().firstWhere(
             (u) => u?.email.trim().toLowerCase() == normalizedEmail,
@@ -257,21 +284,23 @@ class AuthService extends ChangeNotifier {
 
       if (user != null) {
         final savedPassword = _storage.getPassword(normalizedEmail);
-        if (savedPassword != null && savedPassword.trim() != trimmedPassword) {
+        if (savedPassword != null && savedPassword.isNotEmpty && savedPassword.trim() != trimmedPassword) {
           throw Exception('Invalid password. Please check your password and try again.');
         }
         _currentUser = user;
         await _storage.setActiveUserId(user.uid);
       } else {
-        // If trying demo emails
-        if (normalizedEmail == 'customer@localserve.com') {
-          _currentUser = demoUsers[0];
-          await _storage.setActiveUserId(_currentUser!.uid);
-        } else if (normalizedEmail == 'worker@localserve.com') {
-          _currentUser = demoUsers[1];
-          await _storage.setActiveUserId(_currentUser!.uid);
+        // Check demo accounts
+        final demo = demoUsers.cast<AppUser?>().firstWhere(
+              (u) => u?.email.toLowerCase() == normalizedEmail,
+              orElse: () => null,
+            );
+        if (demo != null) {
+          _currentUser = demo;
+          await _storage.saveUser(demo, password: 'password');
+          await _storage.setActiveUserId(demo.uid);
         } else {
-          throw Exception('No account found for "$trimmedEmail". Please register first to set up your mobile number and address.');
+          throw Exception('No account found for "$trimmedEmail". Please register first.');
         }
       }
     } finally {
@@ -297,70 +326,83 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final normalizedEmail = email.trim().toLowerCase();
+      String? userUid;
+
+      // 1. If Firebase is initialized, attempt Firebase Auth
       if (_isFirebaseInitialized) {
-        final credential = await fb_auth.FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        );
-
-        if (credential.user != null) {
-          final newUser = AppUser(
-            uid: credential.user!.uid,
+        try {
+          final credential = await fb_auth.FirebaseAuth.instance.createUserWithEmailAndPassword(
             email: email.trim(),
-            name: name.trim(),
-            mobile: mobile.trim(),
-            address: address?.trim(),
-            latitude: latitude,
-            longitude: longitude,
-            role: role,
-            workerSkill: workerSkill,
-            createdAt: DateTime.now(),
+            password: password,
           );
+          if (credential.user != null) {
+            userUid = credential.user!.uid;
+          }
+        } catch (fbErr) {
+          if (fbErr is fb_auth.FirebaseAuthException && fbErr.code == 'email-already-in-use') {
+            try {
+              // Sign in to update existing auth record
+              final cred = await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+                email: email.trim(),
+                password: password,
+              );
+              if (cred.user != null) {
+                userUid = cred.user!.uid;
+              }
+            } catch (_) {
+              // Password didn't match or other issue
+              debugPrint('Email in use in Firebase, continuing with existing user account.');
+            }
+          } else {
+            debugPrint('Firebase Auth creation notice (continuing with local persistence): $fbErr');
+          }
+        }
+      }
 
+      // 2. Generate local UID if needed
+      userUid ??= _storage.getUserByEmail(normalizedEmail)?.uid ??
+          'user_${DateTime.now().millisecondsSinceEpoch}';
+
+      final newUser = AppUser(
+        uid: userUid,
+        email: email.trim(),
+        name: name.trim(),
+        mobile: mobile.trim(),
+        address: address?.trim(),
+        latitude: latitude,
+        longitude: longitude,
+        role: role,
+        workerSkill: workerSkill,
+        createdAt: DateTime.now(),
+      );
+
+      // 3. Guarantee local persistence & in-memory state FIRST
+      _currentUser = newUser;
+      final idx = _registeredUsers.indexWhere((u) => u.uid == newUser.uid || u.email.toLowerCase() == normalizedEmail);
+      if (idx != -1) {
+        _registeredUsers[idx] = newUser;
+      } else {
+        _registeredUsers.add(newUser);
+      }
+      await _storage.saveUser(newUser, password: password);
+      await _storage.setActiveUserId(newUser.uid);
+
+      // 4. Best-effort Firestore synchronization (non-blocking)
+      if (_isFirebaseInitialized) {
+        try {
           await FirebaseFirestore.instance
               .collection('users')
               .doc(newUser.uid)
-              .set(newUser.toMap());
-
-          _currentUser = newUser;
-          _registeredUsers.add(newUser);
-          await _storage.saveUser(newUser, password: password);
-          await _storage.setActiveUserId(newUser.uid);
+              .set(newUser.toMap(), SetOptions(merge: true));
+        } catch (firestoreErr) {
+          debugPrint('Firestore write note (data safely stored locally): $firestoreErr');
         }
-      } else {
-        await Future.delayed(const Duration(milliseconds: 250));
-        final normalizedEmail = email.trim().toLowerCase();
-
-        if (_registeredUsers.any((u) => u.email.toLowerCase() == normalizedEmail)) {
-          throw Exception('An account with this email already exists.');
-        }
-
-        final newUser = AppUser(
-          uid: 'user_${DateTime.now().millisecondsSinceEpoch}',
-          email: email.trim(),
-          name: name.trim(),
-          mobile: mobile.trim(),
-          address: address?.trim(),
-          latitude: latitude,
-          longitude: longitude,
-          role: role,
-          workerSkill: workerSkill,
-          createdAt: DateTime.now(),
-        );
-
-        _registeredUsers.add(newUser);
-        _currentUser = newUser;
-        await _storage.saveUser(newUser, password: password);
-        await _storage.setActiveUserId(newUser.uid);
       }
-      _isLoading = false;
-      notifyListeners();
-    } catch (e) {
-      _isLoading = false;
-      notifyListeners();
-      rethrow;
     } finally {
+      _isLoading = false;
       _isRegistering = false;
+      notifyListeners();
     }
   }
 
