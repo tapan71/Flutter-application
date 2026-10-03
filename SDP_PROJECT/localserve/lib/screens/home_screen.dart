@@ -149,190 +149,217 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // BUILD CATEGORY IMAGE CARD WITH + SYMBOL
   Widget _buildCategoryCard(BuildContext context, ServiceCategoryItem item) {
-    final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => CategoryWorkersScreen(
-                serviceCategory: item.title,
-                imageUrl: item.imageUrl,
-                description: item.description,
-              ),
-            ),
-          );
-        },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Category Photo
-            Image.network(
-              item.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: item.color.withValues(alpha: 0.15),
-                child: Icon(item.icon, size: 48, color: item.color),
-              ),
-            ),
-
-            // Gradient Overlay for Text Readability
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.2),
-                    Colors.black.withValues(alpha: 0.4),
-                    Colors.black.withValues(alpha: 0.88),
-                  ],
-                  stops: const [0.0, 0.45, 1.0],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CategoryWorkersScreen(
+                    serviceCategory: item.title,
+                    imageUrl: item.imageUrl,
+                    description: item.description,
+                  ),
                 ),
-              ),
-            ),
-
-            // Top-left Icon Tag
-            Positioned(
-              top: 10,
-              left: 10,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white24),
+              );
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Category Photo
+                Image.network(
+                  item.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: item.color.withValues(alpha: 0.15),
+                    child: Icon(item.icon, size: 48, color: item.color),
+                  ),
                 ),
-                child: Icon(item.icon, color: Colors.white, size: 18),
-              ),
-            ),
 
-            // Top-right "+" symbol for Quick Request
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Tooltip(
-                message: 'Quick Request for ${item.title} (+)',
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => openServiceRequest(service: item.title),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            blurRadius: 5,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.add,
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                // Multi-Stop High-Contrast Gradient Overlay
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.15),
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: 0.92),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
                     ),
                   ),
                 ),
-              ),
-            ),
 
-            // Bottom Category Info & Action Buttons
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.2,
+                // Top-left Frosted Glass Category Tag
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(item.icon, color: Colors.white, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.description,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Find Pros',
-                            style: TextStyle(
-                              color: Colors.blue.shade200,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_forward_rounded,
-                            size: 12,
-                            color: Colors.blue.shade200,
-                          ),
-                        ],
-                      ),
-                      InkWell(
+                ),
+
+                // Top-right Quick Request (+) Button with Gradient Glow
+                Positioned(
+                  top: 9,
+                  right: 9,
+                  child: Tooltip(
+                    message: 'Quick Request for ${item.title} (+)',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
                         onTap: () => openServiceRequest(service: item.title),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white38),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.add, size: 12, color: Colors.white),
-                              SizedBox(width: 2),
-                              Text(
-                                'Request',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF2563EB).withValues(alpha: 0.45),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
                               ),
                             ],
                           ),
+                          child: const Icon(
+                            Icons.add_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Bottom Category Information
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.description,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 11,
+                          height: 1.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Find Pros',
+                                style: TextStyle(
+                                  color: Colors.blue.shade200,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 12,
+                                color: Colors.blue.shade200,
+                              ),
+                            ],
+                          ),
+                          InkWell(
+                            onTap: () => openServiceRequest(service: item.title),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.bolt, size: 12, color: Colors.amberAccent),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'Book',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -419,61 +446,135 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
 
-          // LocalServe Plus Membership Button
-          IconButton(
-            icon: Icon(
-              user.hasActiveMembership ? Icons.stars : Icons.stars_outlined,
-              color: user.hasActiveMembership ? Colors.amber.shade700 : null,
-              size: 26,
-            ),
-            tooltip: 'LocalServe Plus Membership',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MembershipScreen(),
-                ),
-              );
-            },
-          ),
-
           // Notification badge
           NotificationBadgeButton(user: user),
 
-          // Top right customer profile button: watch profile & edit profile via button
+          // VIP Symbol & Profile Avatar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Tooltip(
-              message: 'View & Edit Profile (${user.name})',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: () {
-                  UserProfileDialog.show(
-                    context,
-                    user: user,
-                    showEditProfileButton: true,
-                  );
-                },
-                child: CircleAvatar(
-                  radius: 17,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  backgroundImage: user.avatarUrl != null
-                      ? NetworkImage(user.avatarUrl!)
-                      : null,
-                  onBackgroundImageError:
-                      user.avatarUrl != null ? (error, stackTrace) {} : null,
-                  child: user.avatarUrl == null
-                      ? Text(
-                          user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Small VIP Symbol near profile pick
+                Tooltip(
+                  message: user.hasActiveMembership
+                      ? 'LocalServe VIP Active 👑'
+                      : 'Join LocalServe Plus / VIP',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MembershipScreen(),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: user.hasActiveMembership
+                            ? const LinearGradient(
+                                colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                              )
+                            : null,
+                        color: user.hasActiveMembership ? null : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: user.hasActiveMembership
+                              ? const Color(0xFFFBBF24)
+                              : const Color(0xFFCBD5E1),
+                          width: 1.2,
+                        ),
+                        boxShadow: user.hasActiveMembership
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            user.hasActiveMembership ? '👑' : '⭐',
+                            style: const TextStyle(fontSize: 11),
                           ),
-                        )
-                      : null,
+                          const SizedBox(width: 3),
+                          Text(
+                            'VIP',
+                            style: TextStyle(
+                              color: user.hasActiveMembership ? Colors.white : const Color(0xFF334155),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                // Profile Avatar with VIP indicator
+                Tooltip(
+                  message: 'View & Edit Profile (${user.name})',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      UserProfileDialog.show(
+                        context,
+                        user: user,
+                        showEditProfileButton: true,
+                      );
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        CircleAvatar(
+                          radius: 17,
+                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                          backgroundImage: user.avatarUrl != null
+                              ? NetworkImage(user.avatarUrl!)
+                              : null,
+                          onBackgroundImageError:
+                              user.avatarUrl != null ? (error, stackTrace) {} : null,
+                          child: user.avatarUrl == null
+                              ? Text(
+                                  user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (user.hasActiveMembership)
+                          Positioned(
+                            bottom: -2,
+                            right: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF59E0B),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.workspace_premium_rounded,
+                                size: 10,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -493,132 +594,52 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Location Chip Bar
-              if (user.address != null && user.address!.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          user.address!,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        onPressed: () {
-                          UserProfileDialog.show(context, user: user, showEditProfileButton: true);
-                        },
-                        child: const Text('Change', style: TextStyle(fontSize: 11)),
-                      ),
-                    ],
-                  ),
+              // 1. SEARCH BAR AT TOP
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-
-              // Membership Banner
-              InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MembershipScreen(),
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: user.hasActiveMembership
-                          ? [const Color(0xFF1565C0), const Color(0xFF1E88E5)]
-                          : [const Color(0xFF0D47A1), const Color(0xFF1976D2)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search services (e.g. AC Repair, Plumbing)...',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                    prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 22),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                            onPressed: () {
+                              setState(() {
+                                searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          user.hasActiveMembership ? Icons.stars : Icons.workspace_premium,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.hasActiveMembership
-                                  ? '${user.membershipTier ?? "Plus"} Member Active 👑'
-                                  : 'Join LocalServe Plus ✨',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              user.hasActiveMembership
-                                  ? '₹0 Inspection fee active on all your service bookings'
-                                  : 'Get ₹0 inspection fees on all bookings & 10-20% discounts',
-                              style: const TextStyle(color: Colors.white70, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          user.hasActiveMembership ? 'Perks' : 'Upgrade',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0D47A1),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      searchQuery = value;
+                    });
+                  },
                 ),
               ),
 
-              // Live Active Request Tracker (Reactive from DatabaseService)
+              const SizedBox(height: 14),
+
+              // 2. LIVE ACTIVE / PENDING SERVICE REQUEST TRACKER (UNDER SEARCH BAR)
               Builder(
                 builder: (ctx) {
                   final dbService = ctx.watch<DatabaseService>();
@@ -743,33 +764,41 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
 
-              // SEARCH
-              TextField(
-                decoration: const InputDecoration(
-                  hintText: 'Search services...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value;
-                  });
-                },
-              ),
-
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
               // Categories Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Explore Services',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  const Row(
+                    children: [
+                      Icon(Icons.category_rounded, size: 18, color: Color(0xFF2563EB)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Explore Services',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '${filteredCategories.length} categories',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${filteredCategories.length} categories',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
                   ),
                 ],
               ),

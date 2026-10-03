@@ -276,324 +276,460 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
-    final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('Create an Account'),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Join LocalServe',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Choose your role and register',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    if (_errorMessage != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: theme.colorScheme.onErrorContainer,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-
-                    // Role Selection Segmented Control
-                    const Text(
-                      'Select Account Type:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    SegmentedButton<UserRole>(
-                      segments: const [
-                        ButtonSegment(
-                          value: UserRole.customer,
-                          label: Text('Customer'),
-                          icon: Icon(Icons.person),
-                        ),
-                        ButtonSegment(
-                          value: UserRole.worker,
-                          label: Text('Worker'),
-                          icon: Icon(Icons.handyman),
-                        ),
-                      ],
-                      selected: {_selectedRole},
-                      onSelectionChanged: (Set<UserRole> newSelection) {
-                        setState(() {
-                          _selectedRole = newSelection.first;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Worker Skill Dropdown
-                    if (_selectedRole == UserRole.worker) ...[
-                      DropdownButtonFormField<String>(
-                        initialValue: _workerSkill,
-                        decoration: const InputDecoration(
-                          labelText: 'Specialization / Skill',
-                          prefixIcon: Icon(Icons.build_circle_outlined),
-                          border: OutlineInputBorder(),
-                        ),
-                        items: _serviceCategories.map((cat) {
-                          return DropdownMenuItem(
-                            value: cat,
-                            child: Text(cat),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              _workerSkill = val;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Full Name
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Full Name',
-                        prefixIcon: Icon(Icons.badge_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => (val == null || val.trim().isEmpty)
-                          ? 'Please enter your full name'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Email Address
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!val.contains('@') || !val.contains('.')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Phone Number
-                    TextFormField(
-                      controller: _mobileController,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Mobile Number',
-                        hintText: 'Enter 10-digit mobile number',
-                        prefixIcon: Icon(Icons.phone_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => (val == null || val.trim().length < 10)
-                          ? 'Please enter a valid 10-digit mobile number'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Address Header & Location Helper Actions
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Address & Location:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                        if (_selectedLatitude != null && _selectedLongitude != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.green.shade300),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle, size: 12, color: Colors.green),
-                                SizedBox(width: 4),
-                                Text(
-                                  'GPS Set',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Quick Action Buttons: Auto-detect or Pick on Map
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _isDetectingLocation ? null : _detectAndSetLocation,
-                          icon: _isDetectingLocation
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.my_location, size: 16),
-                          label: Text(
-                            _isDetectingLocation ? 'Detecting...' : 'Use Current Location',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _pickOnMap,
-                          icon: const Icon(Icons.map_outlined, size: 16),
-                          label: const Text('Pick on Map', style: TextStyle(fontSize: 12)),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Address Text Field (Fully editable so user can type manually or refine)
-                    TextFormField(
-                      controller: _addressController,
-                      keyboardType: TextInputType.streetAddress,
-                      maxLines: 2,
-                      decoration: InputDecoration(
-                        labelText: 'Address',
-                        hintText: 'Enter complete house/street address or detect location',
-                        prefixIcon: const Icon(Icons.location_on_outlined),
-                        suffixIcon: _addressController.text.isNotEmpty
-                            ? IconButton(
-                                tooltip: 'Clear address',
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    _addressController.clear();
-                                    _selectedLatitude = null;
-                                    _selectedLongitude = null;
-                                  });
-                                },
-                              )
-                            : null,
-                        border: const OutlineInputBorder(),
-                        helperText: _selectedLatitude != null
-                            ? '📍 OpenStreetMap: ${_selectedLatitude!.toStringAsFixed(4)}, ${_selectedLongitude!.toStringAsFixed(4)}'
-                            : 'Type manually or tap "Use Current Location" / "Pick on Map"',
-                        helperStyle: TextStyle(
-                          fontSize: 11,
-                          color: _selectedLatitude != null ? Colors.green.shade800 : Colors.grey.shade600,
-                        ),
-                      ),
-                      validator: (val) => (val == null || val.trim().isEmpty)
-                          ? 'Please enter your address or pick on map'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Password
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password (min 6 characters)',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
-                        ),
-                      ),
-                      validator: (val) => (val == null || val.length < 6)
-                          ? 'Password must be at least 6 characters'
-                          : null,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Submit Button
-                    FilledButton(
-                      onPressed: authService.isLoading ? null : _handleSignUp,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: authService.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Create Account',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
+      body: Stack(
+        children: [
+          // Ambient Decorative Glow
+          Positioned(
+            top: -100,
+            right: -80,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF3B82F6).withValues(alpha: 0.14),
+                    Colors.transparent,
                   ],
                 ),
               ),
             ),
           ),
-        ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: Column(
+                    children: [
+                      // Elevated Form Container Card
+                      Container(
+                        padding: const EdgeInsets.all(28),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Header
+                              Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEFF6FF),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.person_add_alt_1_rounded, size: 14, color: Color(0xFF2563EB)),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'GET STARTED',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.6,
+                                          color: Color(0xFF1D4ED8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Create LocalServe Account',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Select your role and start booking or offering verified services',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+
+                              if (_errorMessage != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded,
+                                          color: Color(0xFFDC2626), size: 20),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: const TextStyle(
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                              ],
+
+                              // Role Selection Segmented Control
+                              const Text(
+                                'I want to register as:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SegmentedButton<UserRole>(
+                                style: ButtonStyle(
+                                  shape: WidgetStateProperty.all(
+                                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: UserRole.customer,
+                                    label: Text('Customer', style: TextStyle(fontWeight: FontWeight.w600)),
+                                    icon: Icon(Icons.person_rounded),
+                                  ),
+                                  ButtonSegment(
+                                    value: UserRole.worker,
+                                    label: Text('Service Pro', style: TextStyle(fontWeight: FontWeight.w600)),
+                                    icon: Icon(Icons.engineering_rounded),
+                                  ),
+                                ],
+                                selected: {_selectedRole},
+                                onSelectionChanged: (Set<UserRole> newSelection) {
+                                  setState(() {
+                                    _selectedRole = newSelection.first;
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Worker Skill Dropdown
+                              if (_selectedRole == UserRole.worker) ...[
+                                DropdownButtonFormField<String>(
+                                  initialValue: _workerSkill,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Primary Skill / Trade',
+                                    prefixIcon: Icon(Icons.build_circle_rounded),
+                                  ),
+                                  items: _serviceCategories.map((cat) {
+                                    return DropdownMenuItem(
+                                      value: cat,
+                                      child: Text(cat),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() {
+                                        _workerSkill = val;
+                                      });
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 18),
+                              ],
+
+                              // Full Name
+                              TextFormField(
+                                controller: _nameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Full Name',
+                                  hintText: 'John Doe',
+                                  prefixIcon: Icon(Icons.badge_rounded),
+                                ),
+                                validator: (val) => (val == null || val.trim().isEmpty)
+                                    ? 'Please enter your full name'
+                                    : null,
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Email Address
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email Address',
+                                  hintText: 'name@example.com',
+                                  prefixIcon: Icon(Icons.mail_outline_rounded),
+                                ),
+                                validator: (val) {
+                                  if (val == null || val.trim().isEmpty) {
+                                    return 'Please enter your email';
+                                  }
+                                  if (!val.contains('@') || !val.contains('.')) {
+                                    return 'Please enter a valid email';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Phone Number
+                              TextFormField(
+                                controller: _mobileController,
+                                keyboardType: TextInputType.phone,
+                                decoration: const InputDecoration(
+                                  labelText: 'Mobile Number',
+                                  hintText: '10-digit number',
+                                  prefixIcon: Icon(Icons.phone_rounded),
+                                ),
+                                validator: (val) => (val == null || val.trim().length < 10)
+                                    ? 'Please enter a valid 10-digit mobile number'
+                                    : null,
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Address Header & Location Helper Actions
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Base Address & Map Location:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                  if (_selectedLatitude != null && _selectedLongitude != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFECFDF5),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'GPS Coordinates Saved',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF059669),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Quick Action Buttons: Auto-detect or Pick on Map
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _isDetectingLocation ? null : _detectAndSetLocation,
+                                    icon: _isDetectingLocation
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : const Icon(Icons.my_location_rounded, size: 15),
+                                    label: Text(
+                                      _isDetectingLocation ? 'Detecting...' : 'Detect Location',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: _pickOnMap,
+                                    icon: const Icon(Icons.map_rounded, size: 15),
+                                    label: const Text('Pick on Map', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Address Text Field
+                              TextFormField(
+                                controller: _addressController,
+                                keyboardType: TextInputType.streetAddress,
+                                maxLines: 2,
+                                decoration: InputDecoration(
+                                  labelText: 'Address',
+                                  hintText: 'Enter street address, landmark & city',
+                                  prefixIcon: const Icon(Icons.location_on_rounded),
+                                  suffixIcon: _addressController.text.isNotEmpty
+                                      ? IconButton(
+                                          tooltip: 'Clear address',
+                                          icon: const Icon(Icons.clear_rounded, size: 18),
+                                          onPressed: () {
+                                            setState(() {
+                                              _addressController.clear();
+                                              _selectedLatitude = null;
+                                              _selectedLongitude = null;
+                                            });
+                                          },
+                                        )
+                                      : null,
+                                  helperText: _selectedLatitude != null
+                                      ? '📍 OpenStreetMap: ${_selectedLatitude!.toStringAsFixed(4)}, ${_selectedLongitude!.toStringAsFixed(4)}'
+                                      : 'Tip: Use "Detect Location" or "Pick on Map" to save coordinates',
+                                  helperStyle: TextStyle(
+                                    fontSize: 11,
+                                    color: _selectedLatitude != null ? const Color(0xFF059669) : const Color(0xFF64748B),
+                                    fontWeight: _selectedLatitude != null ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                                validator: (val) => (val == null || val.trim().isEmpty)
+                                    ? 'Please enter your address or pick on map'
+                                    : null,
+                              ),
+                              const SizedBox(height: 18),
+
+                              // Password
+                              TextFormField(
+                                controller: _passwordController,
+                                obscureText: _obscurePassword,
+                                decoration: InputDecoration(
+                                  labelText: 'Password',
+                                  hintText: 'Minimum 6 characters',
+                                  prefixIcon: const Icon(Icons.lock_rounded),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_off_outlined
+                                          : Icons.visibility_outlined,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _obscurePassword = !_obscurePassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                                validator: (val) => (val == null || val.length < 6)
+                                    ? 'Password must be at least 6 characters'
+                                    : null,
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Submit Button with Gradient
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                                      blurRadius: 14,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: authService.isLoading ? null : _handleSignUp,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Center(
+                                        child: authService.isLoading
+                                            ? const SizedBox(
+                                                height: 22,
+                                                width: 22,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    'Create Account',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.bold,
+                                                      letterSpacing: 0.3,
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Icon(Icons.arrow_forward_rounded,
+                                                      color: Colors.white, size: 20),
+                                                ],
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
