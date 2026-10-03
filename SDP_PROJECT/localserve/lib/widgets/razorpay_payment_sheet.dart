@@ -293,9 +293,11 @@ class _RazorpayPaymentSheetState extends State<RazorpayPaymentSheet> {
                     ),
                     const SizedBox(height: 6),
                     _buildBreakdownRow(
-                      'Condition Inspection Fee (Showing work condition)',
-                      '₹${inspection.toStringAsFixed(0)}',
-                      highlightBadge: 'Fixed',
+                      inspection == 0.0
+                          ? 'Condition Inspection Fee (${widget.customer.membershipTier ?? "Member"} Benefit)'
+                          : 'Condition Inspection Fee (Showing work condition)',
+                      inspection == 0.0 ? '₹0 (Free)' : '₹${inspection.toStringAsFixed(0)}',
+                      highlightBadge: inspection == 0.0 ? 'SAVED ₹100' : 'Fixed',
                     ),
                     const SizedBox(height: 6),
                     _buildBreakdownRow(

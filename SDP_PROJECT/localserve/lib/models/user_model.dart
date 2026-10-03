@@ -39,6 +39,10 @@ class AppUser {
   final double rating;
   final int ratingCount;
   final int completedJobsCount;
+  final String? membershipPlan; // 'customer_plus_monthly', 'customer_gold_yearly', 'worker_pro_monthly', 'worker_elite_yearly'
+  final String? membershipTier; // 'Plus', 'Gold VIP', 'Pro', 'Elite'
+  final DateTime? membershipExpiresAt;
+  final bool isProMember;
 
   const AppUser({
     required this.uid,
@@ -57,12 +61,50 @@ class AppUser {
     this.rating = 4.8,
     this.ratingCount = 0,
     this.completedJobsCount = 0,
+    this.membershipPlan,
+    this.membershipTier,
+    this.membershipExpiresAt,
+    this.isProMember = false,
   });
 
   bool get isCustomer => role == UserRole.customer;
   bool get isWorker => role == UserRole.worker;
 
   bool get hasLocation => latitude != null && longitude != null;
+
+  /// Returns true if user has an unexpired membership plan or active Pro/Plus status
+  bool get hasActiveMembership {
+    if (isProMember) return true;
+    if (membershipPlan == null || membershipPlan == 'none' || membershipPlan!.isEmpty) {
+      return false;
+    }
+    if (membershipExpiresAt == null) return true;
+    return DateTime.now().isBefore(membershipExpiresAt!);
+  }
+
+  /// Whether customer is currently entitled to Plus/Gold zero inspection fees & discounts
+  bool get isCustomerMember => isCustomer && hasActiveMembership;
+
+  /// Whether worker is currently entitled to Pro badge & top category ranking
+  bool get isWorkerPro => isWorker && (hasActiveMembership || isProMember);
+
+  /// Number of days left on the current membership
+  int? get membershipDaysRemaining {
+    if (!hasActiveMembership || membershipExpiresAt == null) return null;
+    final diff = membershipExpiresAt!.difference(DateTime.now()).inDays;
+    return diff >= 0 ? diff : 0;
+  }
+
+  /// Display string for the user's membership badge
+  String get membershipBadgeLabel {
+    if (isWorker) {
+      if (isWorkerPro) return membershipTier ?? 'PRO WORKER';
+      return 'Standard Worker';
+    } else {
+      if (isCustomerMember) return membershipTier ?? 'LocalServe Plus';
+      return 'Standard Member';
+    }
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -82,6 +124,10 @@ class AppUser {
       'rating': rating,
       'ratingCount': ratingCount,
       'completedJobsCount': completedJobsCount,
+      'membershipPlan': membershipPlan,
+      'membershipTier': membershipTier,
+      'membershipExpiresAt': membershipExpiresAt?.toIso8601String(),
+      'isProMember': isProMember,
     };
   }
 
@@ -107,6 +153,12 @@ class AppUser {
       completedJobsCount: map['completedJobsCount'] != null
           ? (map['completedJobsCount'] as num).toInt()
           : 0,
+      membershipPlan: map['membershipPlan'] as String?,
+      membershipTier: map['membershipTier'] as String?,
+      membershipExpiresAt: map['membershipExpiresAt'] != null
+          ? DateTime.tryParse(map['membershipExpiresAt'].toString())
+          : null,
+      isProMember: map['isProMember'] as bool? ?? false,
     );
   }
 
@@ -127,6 +179,10 @@ class AppUser {
     double? rating,
     int? ratingCount,
     int? completedJobsCount,
+    String? membershipPlan,
+    String? membershipTier,
+    DateTime? membershipExpiresAt,
+    bool? isProMember,
   }) {
     return AppUser(
       uid: uid ?? this.uid,
@@ -145,6 +201,10 @@ class AppUser {
       rating: rating ?? this.rating,
       ratingCount: ratingCount ?? this.ratingCount,
       completedJobsCount: completedJobsCount ?? this.completedJobsCount,
+      membershipPlan: membershipPlan ?? this.membershipPlan,
+      membershipTier: membershipTier ?? this.membershipTier,
+      membershipExpiresAt: membershipExpiresAt ?? this.membershipExpiresAt,
+      isProMember: isProMember ?? this.isProMember,
     );
   }
 }

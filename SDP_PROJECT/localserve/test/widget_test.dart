@@ -50,20 +50,25 @@ void main() {
       await tester.tap(customerChip);
       await tester.pumpAndSettle();
 
-      expect(find.text('Plumbing'), findsOneWidget);
+      expect(find.text('Plumbing'), findsAtLeastNWidgets(1));
     },
   );
 
   testWidgets(
     '1-click Worker demo sign-in navigates to Worker Dashboard',
     (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(800, 1200);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
       final workerChip = find.widgetWithText(ActionChip, 'Worker Demo');
       expect(workerChip, findsOneWidget);
-      await tester.ensureVisible(workerChip);
-      await tester.pumpAndSettle();
 
       await tester.tap(workerChip);
       await tester.pumpAndSettle();

@@ -36,6 +36,24 @@ class AuthService extends ChangeNotifier {
       ratingCount: 6,
       completedJobsCount: 8,
     ),
+    AppUser(
+      uid: 'demo_customer_plus',
+      email: 'plus.customer@localserve.com',
+      name: 'Priya Patel (Plus)',
+      mobile: '9711223344',
+      address: 'B-402 Satellite Towers, Ahmedabad',
+      latitude: 23.0280,
+      longitude: 72.5290,
+      role: UserRole.customer,
+      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      rating: 5.0,
+      ratingCount: 12,
+      completedJobsCount: 14,
+      membershipPlan: 'customer_plus_monthly',
+      membershipTier: 'Plus VIP',
+      membershipExpiresAt: DateTime.now().add(const Duration(days: 30)),
+      isProMember: true,
+    ),
     const AppUser(
       uid: 'demo_worker_1',
       email: 'worker@localserve.com',
@@ -51,6 +69,26 @@ class AuthService extends ChangeNotifier {
       rating: 4.9,
       ratingCount: 18,
       completedJobsCount: 24,
+    ),
+    AppUser(
+      uid: 'demo_worker_pro',
+      email: 'pro.electrician@localserve.com',
+      name: 'Vikram Singh (PRO)',
+      mobile: '9822334455',
+      address: 'Navrangpura, CG Road, Ahmedabad',
+      latitude: 23.0360,
+      longitude: 72.5610,
+      role: UserRole.worker,
+      workerSkill: 'Electrical',
+      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+      bio: 'Verified Electrical Contractor with 12+ years experience. Industrial & residential wiring, circuit diagnosis, 24x7 emergency service.',
+      rating: 5.0,
+      ratingCount: 34,
+      completedJobsCount: 42,
+      membershipPlan: 'worker_pro_monthly',
+      membershipTier: 'Pro Club',
+      membershipExpiresAt: DateTime.now().add(const Duration(days: 30)),
+      isProMember: true,
     ),
     const AppUser(
       uid: 'demo_worker_2',
@@ -438,4 +476,50 @@ class AuthService extends ChangeNotifier {
 
     notifyListeners();
   }
+
+  // UPGRADE / ACTIVATE MEMBERSHIP
+  Future<void> upgradeMembership({
+    required String planId,
+    required String tierName,
+    required int durationDays,
+  }) async {
+    if (_currentUser == null) return;
+
+    final expiresAt = DateTime.now().add(Duration(days: durationDays));
+    final bool isPro = _currentUser!.isWorker;
+
+    final updated = _currentUser!.copyWith(
+      membershipPlan: planId,
+      membershipTier: tierName,
+      membershipExpiresAt: expiresAt,
+      isProMember: isPro,
+    );
+
+    _currentUser = updated;
+
+    final idx = _registeredUsers.indexWhere((u) => u.uid == updated.uid);
+    if (idx != -1) {
+      _registeredUsers[idx] = updated;
+    } else {
+      _registeredUsers.add(updated);
+    }
+
+    await _storage.saveUser(updated);
+
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update({
+          'membershipPlan': planId,
+          'membershipTier': tierName,
+          'membershipExpiresAt': expiresAt.toIso8601String(),
+          'isProMember': isPro,
+        });
+      } catch (e) {
+        debugPrint('Error updating user membership in Firestore: $e');
+      }
+    }
+
+    notifyListeners();
+  }
 }
+

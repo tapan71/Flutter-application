@@ -4,6 +4,7 @@ import '../models/user_model.dart';
 import '../models/review_model.dart';
 import '../services/database_service.dart';
 import 'edit_profile_dialog.dart';
+import '../screens/membership_screen.dart';
 
 class UserProfileDialog extends StatelessWidget {
   final AppUser user;
@@ -111,22 +112,78 @@ class UserProfileDialog extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              user.isWorker
-                                  ? '🔧 ${user.workerSkill ?? "General"} Specialist'
-                                  : '👤 Customer',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onPrimaryContainer,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  user.isWorker
+                                      ? '🔧 ${user.workerSkill ?? "General"} Specialist'
+                                      : '👤 Customer',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
                               ),
-                            ),
+                              if (user.isWorkerPro) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFFFFA000), Color(0xFFFF6F00)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.stars, color: Colors.white, size: 14),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'PRO WORKER',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ] else if (user.isCustomerMember) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E88E5),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.stars, color: Colors.white, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        user.membershipTier ?? 'Plus Member',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -172,9 +229,98 @@ class UserProfileDialog extends StatelessWidget {
                             ],
                           ),
 
+                          // Membership Card & Action
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: user.hasActiveMembership
+                                  ? (user.isWorker
+                                      ? Colors.orange.shade50
+                                      : Colors.blue.shade50)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: user.hasActiveMembership
+                                    ? (user.isWorker
+                                        ? Colors.orange.shade300
+                                        : Colors.blue.shade300)
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  user.hasActiveMembership
+                                      ? Icons.workspace_premium
+                                      : Icons.stars_outlined,
+                                  color: user.hasActiveMembership
+                                      ? (user.isWorker
+                                          ? Colors.orange.shade800
+                                          : const Color(0xFF1E88E5))
+                                      : Colors.grey.shade700,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user.hasActiveMembership
+                                            ? 'Plan: ${user.membershipTier ?? "Active Plan"}'
+                                            : 'Free Plan Account',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Text(
+                                        user.hasActiveMembership
+                                            ? (user.isWorker
+                                                ? 'Top Category Rank & Verified Pro Badge active'
+                                                : '₹0 Inspection Fee on all service requests')
+                                            : 'Upgrade to unlock zero inspection fees & Pro perks',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (showEditProfileButton)
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const MembershipScreen(),
+                                        ),
+                                      );
+                                    },
+                                    child: Text(
+                                      user.hasActiveMembership ? 'Manage' : 'Upgrade',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: user.isWorker
+                                            ? Colors.orange.shade900
+                                            : const Color(0xFF1E88E5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+
                           // Prominent Edit Profile button for customer/worker viewing own profile
                           if (showEditProfileButton) ...[
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 12),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),

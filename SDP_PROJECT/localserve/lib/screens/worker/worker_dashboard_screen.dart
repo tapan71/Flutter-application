@@ -12,6 +12,7 @@ import '../../widgets/notification_badge_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
 import '../../widgets/user_profile_dialog.dart';
 import '../../widgets/submit_bill_dialog.dart';
+import '../membership_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -248,6 +249,74 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWorkerKpiBar(AppUser worker, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildKpiItem(
+            icon: Icons.check_circle_outline,
+            iconColor: Colors.green,
+            label: 'Completed',
+            value: '${worker.completedJobsCount} Jobs',
+          ),
+          Container(height: 24, width: 1, color: theme.colorScheme.outlineVariant),
+          _buildKpiItem(
+            icon: Icons.star_rounded,
+            iconColor: Colors.amber.shade700,
+            label: 'Rating',
+            value: '${worker.rating.toStringAsFixed(1)} ★ (${worker.ratingCount})',
+          ),
+          Container(height: 24, width: 1, color: theme.colorScheme.outlineVariant),
+          _buildKpiItem(
+            icon: worker.isWorkerPro ? Icons.workspace_premium : Icons.trending_up,
+            iconColor: worker.isWorkerPro ? Colors.orange.shade800 : theme.colorScheme.primary,
+            label: 'Rank Status',
+            value: worker.isWorkerPro ? '#1 PRO 👑' : 'Standard',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiItem({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: iconColor),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -583,12 +652,43 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              worker.name,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Text(
+                  worker.name,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                if (worker.isWorkerPro) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFA000), Color(0xFFFF6F00)],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.stars, color: Colors.white, size: 12),
+                        SizedBox(width: 3),
+                        Text(
+                          'PRO',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
             Text(
-              'Worker • ${worker.workerSkill ?? "General"}',
+              'Worker • ${worker.workerSkill ?? "General"}${worker.isWorkerPro ? " • Pro Partner" : ""}',
               style: TextStyle(
                 fontSize: 12,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -597,6 +697,22 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
         actions: [
+          // Pro Club Membership Button
+          IconButton(
+            tooltip: 'Worker Pro Club',
+            icon: Icon(
+              worker.isWorkerPro ? Icons.workspace_premium : Icons.stars_outlined,
+              color: worker.isWorkerPro ? Colors.amber.shade700 : null,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MembershipScreen(),
+                ),
+              );
+            },
+          ),
           NotificationBadgeButton(user: worker),
           IconButton(
             tooltip: 'Edit Profile & Details',
@@ -652,8 +768,93 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
       ),
       body: Column(
         children: [
+          // Worker Pro Club Banner
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MembershipScreen(),
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: worker.isWorkerPro
+                      ? [const Color(0xFFE65100), const Color(0xFFF57C00)]
+                      : [const Color(0xFF424242), const Color(0xFF616161)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: (worker.isWorkerPro ? Colors.orange : Colors.black)
+                        .withValues(alpha: 0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    worker.isWorkerPro ? Icons.stars : Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          worker.isWorkerPro
+                              ? '⭐ VERIFIED PRO WORKER ACTIVE'
+                              : 'Upgrade to Worker Pro Club 🚀',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          worker.isWorkerPro
+                              ? '#1 Ranking in search & 0% platform commission active'
+                              : 'Rank #1 in customer search, get Pro badge & 0% commission',
+                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      worker.isWorkerPro ? 'View Perks' : 'Join Pro',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: worker.isWorkerPro
+                            ? const Color(0xFFE65100)
+                            : Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           // Persistent Worker Location Banner
           _buildWorkerLocationBanner(worker, theme),
+
+          // Worker Performance & Status KPI Bar
+          _buildWorkerKpiBar(worker, theme),
 
           // Tabs
           Expanded(

@@ -5,10 +5,12 @@ import '../models/service_request.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import 'service_request_screen.dart';
+import 'service_details_screen.dart';
 import 'history_screen.dart';
 import 'category_workers_screen.dart';
 import '../widgets/notification_badge_button.dart';
 import '../widgets/user_profile_dialog.dart';
+import 'membership_screen.dart';
 
 class ServiceCategoryItem {
   final String title;
@@ -417,6 +419,24 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
 
+          // LocalServe Plus Membership Button
+          IconButton(
+            icon: Icon(
+              user.hasActiveMembership ? Icons.stars : Icons.stars_outlined,
+              color: user.hasActiveMembership ? Colors.amber.shade700 : null,
+              size: 26,
+            ),
+            tooltip: 'LocalServe Plus Membership',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MembershipScreen(),
+                ),
+              );
+            },
+          ),
+
           // Notification badge
           NotificationBadgeButton(user: user),
 
@@ -473,6 +493,256 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Location Chip Bar
+              if (user.address != null && user.address!.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          user.address!,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () {
+                          UserProfileDialog.show(context, user: user, showEditProfileButton: true);
+                        },
+                        child: const Text('Change', style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Membership Banner
+              InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MembershipScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: user.hasActiveMembership
+                          ? [const Color(0xFF1565C0), const Color(0xFF1E88E5)]
+                          : [const Color(0xFF0D47A1), const Color(0xFF1976D2)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          user.hasActiveMembership ? Icons.stars : Icons.workspace_premium,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.hasActiveMembership
+                                  ? '${user.membershipTier ?? "Plus"} Member Active 👑'
+                                  : 'Join LocalServe Plus ✨',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              user.hasActiveMembership
+                                  ? '₹0 Inspection fee active on all your service bookings'
+                                  : 'Get ₹0 inspection fees on all bookings & 10-20% discounts',
+                              style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          user.hasActiveMembership ? 'Perks' : 'Upgrade',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0D47A1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Live Active Request Tracker (Reactive from DatabaseService)
+              Builder(
+                builder: (ctx) {
+                  final dbService = ctx.watch<DatabaseService>();
+                  final reqs = dbService.allRequests.where((r) =>
+                    (r.customerId == user.uid || (r.email.isNotEmpty && r.email.toLowerCase() == user.email.toLowerCase()))
+                  ).toList();
+                  final activeReqs = reqs.where((r) => !r.completed && !r.isCancelled && r.status != 'cancelled').toList();
+
+                  if (activeReqs.isEmpty) return const SizedBox.shrink();
+
+                  final latestActive = activeReqs.first;
+                  String statusLabel = 'Pending Match';
+                  Color statusColor = Colors.orange;
+                  IconData statusIcon = Icons.hourglass_top_rounded;
+
+                  if (latestActive.isBilled && !latestActive.isPaid) {
+                    statusLabel = 'Bill Ready: ₹${(latestActive.totalAmount ?? 0).toStringAsFixed(0)} • Pay Now';
+                    statusColor = Colors.green;
+                    statusIcon = Icons.payment;
+                  } else if (latestActive.isInProgress) {
+                    statusLabel = 'Work In Progress';
+                    statusColor = Colors.teal;
+                    statusIcon = Icons.engineering;
+                  } else if (latestActive.isAssigned) {
+                    statusLabel = latestActive.workerName != null
+                        ? 'Assigned: ${latestActive.workerName}'
+                        : 'Worker Assigned';
+                    statusColor = Colors.blue;
+                    statusIcon = Icons.assignment_turned_in;
+                  } else if (latestActive.isDirectRequest) {
+                    statusLabel = 'Direct Request Sent';
+                    statusColor = Colors.deepPurple;
+                    statusIcon = Icons.person_search;
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: statusColor.withValues(alpha: 0.4), width: 1.5),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ServiceDetailsScreen(
+                                request: latestActive,
+                                currentUser: user,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.18),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(statusIcon, color: statusColor, size: 22),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: statusColor,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'ACTIVE BOOKING',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            latestActive.service,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      statusLabel,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: statusColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, color: statusColor),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+
               // SEARCH
               TextField(
                 decoration: const InputDecoration(
@@ -488,6 +758,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               const SizedBox(height: 16),
+
+              // Categories Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Explore Services',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${filteredCategories.length} categories',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
 
               // Responsive Image Grid of Categories
               LayoutBuilder(
@@ -524,6 +810,107 @@ class _HomeScreenState extends State<HomeScreen> {
                       final item = filteredCategories[index];
                       return _buildCategoryCard(context, item);
                     },
+                  );
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // Featured Verified Pro Specialists
+              const Text(
+                'Featured Verified Specialists ⭐',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Top-rated professionals available for 1-hour direct booking',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+
+              Builder(
+                builder: (ctx) {
+                  final dbService = ctx.watch<DatabaseService>();
+                  final pros = dbService.allUsers
+                      .where((u) => u.isWorker)
+                      .take(4)
+                      .toList();
+
+                  if (pros.isEmpty) return const SizedBox.shrink();
+
+                  return SizedBox(
+                    height: 80,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: pros.length,
+                      separatorBuilder: (c, i) => const SizedBox(width: 12),
+                      itemBuilder: (c, i) {
+                        final pro = pros[i];
+                        return Container(
+                          width: 210,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: pro.isWorkerPro ? Colors.amber.shade400 : Colors.grey.shade300,
+                              width: pro.isWorkerPro ? 1.5 : 1,
+                            ),
+                          ),
+                          child: InkWell(
+                            onTap: () => UserProfileDialog.show(ctx, user: pro),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundImage: pro.avatarUrl != null ? NetworkImage(pro.avatarUrl!) : null,
+                                  child: pro.avatarUrl == null ? const Icon(Icons.engineering, size: 18) : null,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              pro.name,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (pro.isWorkerPro) ...[
+                                            const SizedBox(width: 3),
+                                            const Icon(Icons.stars, size: 11, color: Colors.orange),
+                                          ],
+                                        ],
+                                      ),
+                                      Text(
+                                        pro.workerSkill ?? 'General',
+                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.star, size: 11, color: Colors.amber),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            pro.rating.toStringAsFixed(1),
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   );
                 },
               ),

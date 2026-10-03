@@ -1,0 +1,63 @@
+# -----------------------------------------------------------------------------
+# LocalServe — Unified Root Git Ignore
+# -----------------------------------------------------------------------------
+
+# Miscellaneous & Archive files
+*.class
+*.zip
+*.tar.gz
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+.idea/caches/
+.idea/workspace.xml
+.idea/shelf/
+**/.idea/
+
+# Visual Studio Code
+.vscode/
+
+# Flutter & Dart Build Output & Cache
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+**/build/
+**/.dart_tool/
+**/doc/api/
+
+# Android build artifacts
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# iOS build artifacts
+**/ios/Flutter/.last_build_id
+**/ios/Pods/
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# Widget Preview
+.widget_preview/

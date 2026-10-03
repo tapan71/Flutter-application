@@ -108,6 +108,10 @@ class ServiceDetailsScreen extends StatelessWidget {
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
+                        if (!isCancelled) ...[
+                          const SizedBox(height: 16),
+                          _buildProgressStepper(currentReq, theme),
+                        ],
                       ],
                     );
                   },
@@ -1517,6 +1521,91 @@ class ServiceDetailsScreen extends StatelessWidget {
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
       ],
+    );
+  }
+
+  Widget _buildProgressStepper(ServiceRequest req, ThemeData theme) {
+    // Determine active steps
+    final bool step1Active = true; // Requested
+    final bool step2Active = req.isAssigned || req.isInProgress || req.completed; // Assigned
+    final bool step3Active = req.isInProgress || req.completed; // In Progress
+    final bool step4Active = req.completed; // Completed
+
+    return Row(
+      children: [
+        _buildStepItem(
+          label: 'Booked',
+          isActive: step1Active,
+          icon: Icons.bookmark_added_rounded,
+          theme: theme,
+        ),
+        _buildStepLine(isActive: step2Active, theme: theme),
+        _buildStepItem(
+          label: 'Assigned',
+          isActive: step2Active,
+          icon: Icons.person_pin_circle_rounded,
+          theme: theme,
+        ),
+        _buildStepLine(isActive: step3Active, theme: theme),
+        _buildStepItem(
+          label: 'Working',
+          isActive: step3Active,
+          icon: Icons.handyman_rounded,
+          theme: theme,
+        ),
+        _buildStepLine(isActive: step4Active, theme: theme),
+        _buildStepItem(
+          label: 'Done',
+          isActive: step4Active,
+          icon: Icons.verified_rounded,
+          theme: theme,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepItem({
+    required String label,
+    required bool isActive,
+    required IconData icon,
+    required ThemeData theme,
+  }) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: isActive ? theme.colorScheme.primary : Colors.grey.shade200,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 14,
+              color: isActive ? Colors.white : Colors.grey.shade500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? theme.colorScheme.primary : Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepLine({required bool isActive, required ThemeData theme}) {
+    return Container(
+      width: 20,
+      height: 2,
+      margin: const EdgeInsets.only(bottom: 16),
+      color: isActive ? theme.colorScheme.primary : Colors.grey.shade300,
     );
   }
 }

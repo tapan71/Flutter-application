@@ -172,6 +172,9 @@ class DatabaseService extends ChangeNotifier {
       rating: 4.9,
       ratingCount: 18,
       completedJobsCount: 24,
+      isProMember: true,
+      membershipPlan: 'worker_pro_monthly',
+      membershipTier: 'PRO WORKER',
     ),
     const AppUser(
       uid: 'demo_worker_2',
@@ -236,6 +239,9 @@ class DatabaseService extends ChangeNotifier {
       rating: 5.0,
       ratingCount: 31,
       completedJobsCount: 45,
+      isProMember: true,
+      membershipPlan: 'worker_pro_monthly',
+      membershipTier: 'PRO WORKER',
     ),
     const AppUser(
       uid: 'demo_worker_6',
@@ -344,6 +350,8 @@ class DatabaseService extends ChangeNotifier {
 
   List<ServiceRequest> get allRequests => List.unmodifiable(_mockRequests);
   List<AppUser> get allUsers => List.unmodifiable(_mockUsers);
+  List<AppUser> getAllUsers() => allUsers;
+  Stream<List<AppNotification>> streamUserNotifications(String userId) => streamNotifications(userId);
 
   DatabaseService() {
     _init();
@@ -1457,7 +1465,7 @@ class DatabaseService extends ChangeNotifier {
 
   // --- CATEGORY WORKER DISCOVERY & DIRECT BOOKING (1-HOUR EXPIRY) ---
 
-  /// Finds all verified workers for a given category, sorted by distance from the customer
+  /// Finds all verified workers for a given category, sorted with PRO workers first, then distance & rating
   List<AppUser> getWorkersForCategory(
     String category, {
     double? customerLat,
@@ -1466,7 +1474,7 @@ class DatabaseService extends ChangeNotifier {
     bool strictWithinRadius = false,
   }) {
     final catNorm = category.trim().toLowerCase();
-    final workers = _mockUsers.where((u) {
+    var workers = _mockUsers.where((u) {
       if (u.role != UserRole.worker) return false;
       final skill = (u.workerSkill ?? '').trim().toLowerCase();
       if (skill.isEmpty || skill == 'general service' || skill == 'all') return true;
@@ -1474,9 +1482,12 @@ class DatabaseService extends ChangeNotifier {
       return skill == catNorm;
     }).toList();
 
-    // Sort by distance if customer has coordinates
-    if (customerLat != null && customerLon != null) {
-      workers.sort((a, b) {
+    // Sort: 1) Pro Workers First, 2) Distance, 3) Highest Rating
+    workers.sort((a, b) {
+      if (a.isWorkerPro && !b.isWorkerPro) return -1;
+      if (!a.isWorkerPro && b.isWorkerPro) return 1;
+
+      if (customerLat != null && customerLon != null) {
         final distA = calculateDistanceKm(
               lat1: customerLat,
               lon1: customerLon,
@@ -1491,20 +1502,23 @@ class DatabaseService extends ChangeNotifier {
               lon2: b.longitude,
             ) ??
             9999.0;
-        return distA.compareTo(distB);
-      });
-
-      if (strictWithinRadius) {
-        return workers.where((w) {
-          final dist = calculateDistanceKm(
-            lat1: customerLat,
-            lon1: customerLon,
-            lat2: w.latitude,
-            lon2: w.longitude,
-          );
-          return dist == null || dist <= maxDistanceKm;
-        }).toList();
+        final comp = distA.compareTo(distB);
+        if (comp != 0) return comp;
       }
+
+      return b.rating.compareTo(a.rating);
+    });
+
+    if (customerLat != null && customerLon != null && strictWithinRadius) {
+      workers = workers.where((w) {
+        final dist = calculateDistanceKm(
+          lat1: customerLat,
+          lon1: customerLon,
+          lat2: w.latitude,
+          lon2: w.longitude,
+        );
+        return dist == null || dist <= maxDistanceKm;
+      }).toList();
     }
 
     return workers;
@@ -1667,5 +1681,56 @@ class DatabaseService extends ChangeNotifier {
       });
       controller.onCancel = () => sub.cancel();
     });
+  }
+
+  /// Upgrade / Activate user's membership in database and dispatch celebratory notification
+  Future<void> upgradeMembership({
+    required String userId,
+    required String planId,
+    required String tierName,
+    required int durationDays,
+    required double price,
+  }) async {
+    final expiresAt = DateTime.now().add(Duration(days: durationDays));
+
+    final idx = _mockUsers.indexWhere((u) => u.uid == userId);
+    if (idx != -1) {
+      final user = _mockUsers[idx];
+      final isPro = user.isWorker;
+      final updated = user.copyWith(
+        membershipPlan: planId,
+        membershipTier: tierName,
+        membershipExpiresAt: expiresAt,
+        isProMember: isPro,
+      );
+      _mockUsers[idx] = updated;
+      await _storage.saveUser(updated);
+
+      if (_isFirebaseInitialized) {
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(userId).update({
+            'membershipPlan': planId,
+            'membershipTier': tierName,
+            'membershipExpiresAt': expiresAt.toIso8601String(),
+            'isProMember': isPro,
+          });
+        } catch (e) {
+          debugPrint('Error updating membership in Firestore: $e');
+        }
+      }
+
+      // Dispatch congratulations notification
+      final isWorker = user.isWorker;
+      await sendNotification(
+        userId: userId,
+        title: isWorker ? 'Worker Pro Active! 🌟' : 'LocalServe Plus Active! 👑',
+        message: isWorker
+            ? 'Congratulations! You are now a $tierName member with #1 Category Rank & Verified Pro Badge.'
+            : 'Welcome to $tierName! Enjoy ₹0 inspection fees on all bookings and exclusive discounts.',
+        type: 'membership_activated',
+      );
+
+      notifyListeners();
+    }
   }
 }

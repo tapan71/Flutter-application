@@ -72,7 +72,13 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
     );
 
     final double distanceFee = DatabaseService.calculateDistanceFee(distanceKm);
-    const double inspectionFee = DatabaseService.inspectionFee; // ₹100
+
+    // Check if customer is a LocalServe Plus/Gold member (waived inspection fee)
+    final customer = widget.request.customerId != null
+        ? dbService.getAllUsers().where((u) => u.uid == widget.request.customerId).firstOrNull
+        : null;
+    final bool isCustomerMember = customer?.isCustomerMember ?? false;
+    final double inspectionFee = isCustomerMember ? 0.0 : DatabaseService.inspectionFee;
     final double totalAmount = _baseAmount + inspectionFee + distanceFee;
 
     return AlertDialog(
@@ -146,6 +152,34 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
                 ),
               ),
 
+              if (isCustomerMember) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.stars, color: Color(0xFF1E88E5), size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'LocalServe Member (${customer?.membershipTier ?? "Plus"}): ₹100 Inspection Fee is Waived (₹0)!',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF0D47A1),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 16),
 
               // Base Work Charge Input
@@ -200,9 +234,13 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
                     const SizedBox(height: 8),
                     _buildRow(
                       '2. Condition Inspection Fee:',
-                      '₹100',
-                      subtext: 'Service charge for showing/assessing work condition',
-                      badge: 'Fixed ₹100',
+                      isCustomerMember ? '₹0 (Free)' : '₹100',
+                      subtext: isCustomerMember
+                          ? 'Waived for LocalServe Plus/Gold member'
+                          : 'Service charge for showing/assessing work condition',
+                      badge: isCustomerMember ? 'MEMBER PERK' : 'Fixed ₹100',
+                      badgeColor: isCustomerMember ? Colors.blue.shade100 : null,
+                      badgeTextColor: isCustomerMember ? Colors.blue.shade900 : null,
                     ),
                     const SizedBox(height: 8),
                     _buildRow(
@@ -311,6 +349,8 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
     bool isBold = false,
     String? subtext,
     String? badge,
+    Color? badgeColor,
+    Color? badgeTextColor,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +369,7 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
             ),
             Text(
               amount,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
                 color: Colors.black87,
@@ -352,7 +392,7 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    color: badgeColor ?? Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: Colors.blue.shade200),
                   ),
@@ -361,7 +401,7 @@ class _SubmitBillDialogState extends State<SubmitBillDialog> {
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
+                      color: badgeTextColor ?? Colors.blue.shade800,
                     ),
                   ),
                 ),

@@ -53,32 +53,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Brand Icon & Title
-                    Container(
-                      height: 80,
-                      width: 80,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.handyman_rounded,
-                        size: 42,
-                        color: theme.colorScheme.primary,
+                    Center(
+                      child: Container(
+                        height: 64,
+                        width: 64,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.handyman_rounded,
+                          size: 34,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Text(
                       'LocalServe',
                       textAlign: TextAlign.center,
@@ -87,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: theme.colorScheme.primary,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       'Sign in to manage & request local services',
                       textAlign: TextAlign.center,
@@ -95,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.grey.shade600,
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 18),
 
                     if (_errorMessage != null)
                       Container(
@@ -246,11 +248,29 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
                         ActionChip(
+                          avatar: const Icon(Icons.stars, size: 18, color: Colors.amber),
+                          label: const Text('Plus Customer ⭐'),
+                          onPressed: () {
+                            authService.signInWithDemoUser(
+                              AuthService.demoUsers[1],
+                            );
+                          },
+                        ),
+                        ActionChip(
                           avatar: const Icon(Icons.engineering, size: 18),
                           label: const Text('Worker Demo'),
                           onPressed: () {
                             authService.signInWithDemoUser(
-                              AuthService.demoUsers[1],
+                              AuthService.demoUsers[2],
+                            );
+                          },
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.workspace_premium, size: 18, color: Colors.orange),
+                          label: const Text('PRO Worker 👑'),
+                          onPressed: () {
+                            authService.signInWithDemoUser(
+                              AuthService.demoUsers[3],
                             );
                           },
                         ),
