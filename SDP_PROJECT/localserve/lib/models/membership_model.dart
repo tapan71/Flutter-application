@@ -82,53 +82,12 @@ class MembershipPlan {
     ),
   ];
 
-  static const List<MembershipPlan> workerPlans = [
-    MembershipPlan(
-      id: 'worker_pro_monthly',
-      role: UserRole.worker,
-      title: 'Worker Pro Club',
-      tierName: 'Pro',
-      price: 299.0,
-      billingPeriod: 'month',
-      durationDays: 30,
-      tagline: 'Verified Pro Badge & Top Category Rank',
-      badgeText: 'RECOMMENDED',
-      primaryColor: Color(0xFFE65100), // Amber Deep Orange
-      secondaryColor: Color(0xFFFFF3E0),
-      features: [
-        '⭐ Golden "VERIFIED PRO" badge on your worker profile',
-        '🚀 Ranked #1 in customer search and category listings',
-        '💼 0% platform service commission on your bookings',
-        '🎯 Priority direct job invitations from VIP customers',
-        '📊 Pro performance stats & verified trust rating seal',
-      ],
-    ),
-    MembershipPlan(
-      id: 'worker_elite_yearly',
-      role: UserRole.worker,
-      title: 'Worker Elite Partner',
-      tierName: 'Elite',
-      price: 1499.0,
-      billingPeriod: 'year',
-      durationDays: 365,
-      tagline: 'Maximum bookings, featured banner & zero fees',
-      badgeText: 'BEST VALUE (Save 58%)',
-      primaryColor: Color(0xFF6A1B9A), // Royal Purple
-      secondaryColor: Color(0xFFF3E5F5),
-      features: [
-        '👑 All Worker Pro Club perks for an entire year',
-        '🌟 Featured Top-Worker banner in your local area',
-        '⚡ Unlimited service radius notification access',
-        '💼 0% platform commission on all annual earnings',
-        '🎖️ Official LocalServe Master Certified Partner Certificate',
-        '📞 Dedicated Worker Success Account Manager',
-      ],
-    ),
-  ];
+  // Worker membership is removed: all workers work freely with 0 fees and without membership.
+  static const List<MembershipPlan> workerPlans = [];
 
   static MembershipPlan? findById(String? planId) {
     if (planId == null) return null;
-    final all = [...customerPlans, ...workerPlans];
+    final all = customerPlans;
     return all.where((p) => p.id == planId).firstOrNull;
   }
 }

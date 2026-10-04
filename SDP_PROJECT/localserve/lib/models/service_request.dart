@@ -23,6 +23,7 @@ class ServiceRequest {
   final List<String> declinedWorkerIds;
   final bool customerReviewed;
   final bool workerReviewed;
+  final List<String> images; // Optional customer-uploaded issue photos
 
   // Payment & Billing Fields
   final double? baseAmount; // Work charge decided by worker
@@ -61,6 +62,7 @@ class ServiceRequest {
     this.declinedWorkerIds = const [],
     this.customerReviewed = false,
     this.workerReviewed = false,
+    this.images = const [],
     this.baseAmount,
     this.inspectionFee,
     this.distanceFee,
@@ -88,6 +90,8 @@ class ServiceRequest {
       DateTime.now().isAfter(directRequestExpiresAt!);
 
   bool get hasLocation => latitude != null && longitude != null;
+  bool get hasImages => images.isNotEmpty;
+  int get imageCount => images.length;
 
   // Billing getters
   bool get isBilled => totalAmount != null && totalAmount! > 0;
@@ -122,6 +126,7 @@ class ServiceRequest {
     List<String>? declinedWorkerIds,
     bool? customerReviewed,
     bool? workerReviewed,
+    List<String>? images,
     double? baseAmount,
     double? inspectionFee,
     double? distanceFee,
@@ -162,6 +167,7 @@ class ServiceRequest {
       declinedWorkerIds: declinedWorkerIds ?? this.declinedWorkerIds,
       customerReviewed: customerReviewed ?? this.customerReviewed,
       workerReviewed: workerReviewed ?? this.workerReviewed,
+      images: images ?? this.images,
       baseAmount: baseAmount ?? this.baseAmount,
       inspectionFee: inspectionFee ?? this.inspectionFee,
       distanceFee: distanceFee ?? this.distanceFee,
@@ -200,6 +206,7 @@ class ServiceRequest {
       'declinedWorkerIds': declinedWorkerIds,
       'customerReviewed': customerReviewed,
       'workerReviewed': workerReviewed,
+      'images': images,
       'baseAmount': baseAmount,
       'inspectionFee': inspectionFee,
       'distanceFee': distanceFee,
@@ -251,6 +258,9 @@ class ServiceRequest {
           : const [],
       customerReviewed: map['customerReviewed'] as bool? ?? false,
       workerReviewed: map['workerReviewed'] as bool? ?? false,
+      images: map['images'] != null
+          ? List<String>.from(map['images'] as List)
+          : const [],
       baseAmount: map['baseAmount'] != null ? (map['baseAmount'] as num).toDouble() : null,
       inspectionFee: map['inspectionFee'] != null ? (map['inspectionFee'] as num).toDouble() : null,
       distanceFee: map['distanceFee'] != null ? (map['distanceFee'] as num).toDouble() : null,

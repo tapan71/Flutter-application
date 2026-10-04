@@ -28,8 +28,56 @@ class _MembershipScreenState extends State<MembershipScreen> {
       );
     }
 
-    final isWorker = user.isWorker;
-    final plans = isWorker ? MembershipPlan.workerPlans : MembershipPlan.customerPlans;
+    // Workers never need a membership — they can work freely with 0% platform fee
+    if (user.isWorker) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Worker Access'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0FDF4),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle_rounded, size: 64, color: Color(0xFF16A34A)),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  '100% Free Platform for Workers',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Workers never need a membership on LocalServe. You can explore available jobs, accept requests, and serve customers completely free with 0% platform commission!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Color(0xFF64748B), height: 1.5),
+                ),
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back to Dashboard'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E40AF),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final plans = MembershipPlan.customerPlans;
 
     // Set default selected plan
     _selectedPlanId ??= plans.first.id;
@@ -37,17 +85,17 @@ class _MembershipScreenState extends State<MembershipScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: Row(
+        title: const Row(
           children: [
             Icon(
-              isWorker ? Icons.workspace_premium : Icons.stars,
-              color: isWorker ? Colors.amber[700] : const Color(0xFF1E88E5),
+              Icons.stars,
+              color: Color(0xFF1E88E5),
               size: 26,
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Text(
-              isWorker ? 'Worker Pro Club' : 'LocalServe Plus',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              'LocalServe Plus',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -69,15 +117,13 @@ class _MembershipScreenState extends State<MembershipScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isWorker ? 'Choose Your Pro Subscription' : 'Choose Your Membership Plan',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  const Text(
+                    'Choose Your Membership Plan',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    isWorker
-                        ? 'Get top ranking in customer search, verified badge, and 0% commission.'
-                        : 'Save ₹100 on every booking with ₹0 inspection fee and instant discounts.',
+                    'Save ₹100 on every booking with ₹0 inspection fee and instant discounts.',
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
@@ -100,7 +146,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
             const SizedBox(height: 20),
 
             // Benefits Comparison Banner
-            _buildPerksComparisonBanner(context, isWorker),
+            _buildPerksComparisonBanner(context),
 
             const SizedBox(height: 24),
 
@@ -110,7 +156,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
               child: ElevatedButton(
                 onPressed: _isProcessing ? null : () => _handleSubscribe(context, user, plans),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isWorker ? const Color(0xFFE65100) : const Color(0xFF1E88E5),
+                  backgroundColor: const Color(0xFF1E88E5),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -145,7 +191,6 @@ class _MembershipScreenState extends State<MembershipScreen> {
 
   Widget _buildCurrentStatusCard(BuildContext context, AppUser user) {
     final hasActive = user.hasActiveMembership;
-    final isWorker = user.isWorker;
     final daysLeft = user.membershipDaysRemaining;
 
     return Container(
@@ -154,9 +199,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: hasActive
-              ? (isWorker
-                  ? [const Color(0xFFE65100), const Color(0xFFF57C00)]
-                  : [const Color(0xFF1565C0), const Color(0xFF1E88E5)])
+              ? [const Color(0xFF1565C0), const Color(0xFF1E88E5)]
               : [const Color(0xFF37474F), const Color(0xFF455A64)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -164,10 +207,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (hasActive
-                    ? (isWorker ? Colors.orange : Colors.blue)
-                    : Colors.grey)
-                .withValues(alpha: 0.3),
+            color: (hasActive ? Colors.blue : Colors.grey).withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -225,12 +265,8 @@ class _MembershipScreenState extends State<MembershipScreen> {
           const SizedBox(height: 6),
           Text(
             hasActive
-                ? (isWorker
-                    ? '⭐ You are recognized as a Verified Pro with #1 category search placement & 0% commission!'
-                    : '🎉 You enjoy ₹0 Inspection fees on all service requests + exclusive labor discounts!')
-                : (isWorker
-                    ? 'Upgrade to Worker Pro Club to get verified, rank at the top, and save on commission.'
-                    : 'Upgrade to LocalServe Plus to waive the ₹100 inspection fee on every booking.'),
+                ? '🎉 You enjoy ₹0 Inspection fees on all service requests + exclusive labor discounts!'
+                : 'Upgrade to LocalServe Plus to waive the ₹100 inspection fee on every booking.',
             style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
           ),
         ],
@@ -368,7 +404,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
     );
   }
 
-  Widget _buildPerksComparisonBanner(BuildContext context, bool isWorker) {
+  Widget _buildPerksComparisonBanner(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -392,9 +428,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            isWorker
-                ? 'Join 1,200+ local master professionals boosting their monthly bookings with Pro badges.'
-                : 'Over ₹2,500 estimated annual savings on inspection fees and emergency household repairs.',
+            'Over ₹2,500 estimated annual savings on inspection fees and emergency household repairs.',
             style: TextStyle(fontSize: 12, color: Colors.grey[700]),
           ),
         ],

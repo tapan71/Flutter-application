@@ -86,7 +86,8 @@ class AppUser {
   bool get isCustomerMember => isCustomer && hasActiveMembership;
 
   /// Whether worker is currently entitled to Pro badge & top category ranking
-  bool get isWorkerPro => isWorker && (hasActiveMembership || isProMember);
+  /// Worker membership has been removed: all workers can work freely without any membership.
+  bool get isWorkerPro => false;
 
   /// Number of days left on the current membership
   int? get membershipDaysRemaining {
@@ -98,8 +99,7 @@ class AppUser {
   /// Display string for the user's membership badge
   String get membershipBadgeLabel {
     if (isWorker) {
-      if (isWorkerPro) return membershipTier ?? 'PRO WORKER';
-      return 'Standard Worker';
+      return 'Verified Specialist';
     } else {
       if (isCustomerMember) return membershipTier ?? 'LocalServe Plus';
       return 'Standard Member';

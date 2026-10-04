@@ -365,17 +365,13 @@ class _CategoryWorkersScreenState extends State<CategoryWorkersScreen> {
     AppUser? customer,
     double? distanceKm,
   ) {
-    final bool isPro = worker.isWorkerPro;
-
     return Card(
-      elevation: isPro ? 3 : 1,
+      elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isPro
-              ? Colors.amber.shade400
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: isPro ? 1.5 : 1,
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: 1,
         ),
       ),
       child: Padding(
@@ -410,9 +406,9 @@ class _CategoryWorkersScreenState extends State<CategoryWorkersScreen> {
                           color: Colors.white,
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          isPro ? Icons.stars : Icons.verified,
-                          color: isPro ? Colors.amber.shade800 : Colors.blue,
+                        child: const Icon(
+                          Icons.verified,
+                          color: Colors.blue,
                           size: 16,
                         ),
                       ),
@@ -430,51 +426,13 @@ class _CategoryWorkersScreenState extends State<CategoryWorkersScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    worker.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (isPro) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFFFA000),
-                                          Color(0xFFFF6F00)
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.stars,
-                                            color: Colors.white, size: 11),
-                                        SizedBox(width: 3),
-                                        Text(
-                                          'PRO',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
+                            child: Text(
+                              worker.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Container(

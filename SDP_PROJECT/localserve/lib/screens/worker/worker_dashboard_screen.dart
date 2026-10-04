@@ -12,7 +12,6 @@ import '../../widgets/notification_badge_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
 import '../../widgets/user_profile_dialog.dart';
 import '../../widgets/submit_bill_dialog.dart';
-import '../membership_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -41,47 +40,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  Future<void> _updateWorkerLocation(AppUser worker) async {
-    final authService = context.read<AuthService>();
-    final dbService = context.read<DatabaseService>();
-
-    final result = await Navigator.push<LocationPickerResult>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LocationPickerScreen(
-          initialLatitude: worker.latitude,
-          initialLongitude: worker.longitude,
-          initialAddress: worker.address,
-          title: 'Update My Worker Location',
-          confirmButtonText: 'Save My Location',
-        ),
-      ),
-    );
-
-    if (result != null && mounted) {
-      await authService.updateCurrentUserLocation(
-        latitude: result.latitude,
-        longitude: result.longitude,
-        address: result.address,
-      );
-      await dbService.updateUserLocation(
-        uid: worker.uid,
-        latitude: result.latitude,
-        longitude: result.longitude,
-        address: result.address,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Worker location updated to: ${result.address}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    }
   }
 
   double? _getDistanceKm(AppUser worker, ServiceRequest req) {
@@ -147,111 +105,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
     return reqService == skill;
   }
 
-  Widget _buildWorkerLocationBanner(AppUser worker, ThemeData theme) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.my_location, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'My Location (OpenStreetMap)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    if (worker.hasLocation) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Active GPS',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade900,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  worker.address?.isNotEmpty == true
-                      ? worker.address!
-                      : 'Location not set yet (Tap to set on OpenStreetMap)',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (worker.hasLocation)
-                  Text(
-                    'Coordinates: ${worker.latitude!.toStringAsFixed(4)}, ${worker.longitude!.toStringAsFixed(4)}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton.tonalIcon(
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: () => _updateWorkerLocation(worker),
-                icon: const Icon(Icons.edit_location_alt, size: 14),
-                label: Text(worker.hasLocation ? 'Update Pin' : 'Set Pin', style: const TextStyle(fontSize: 11)),
-              ),
-              const SizedBox(height: 4),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: () => EditProfileDialog.show(context, user: worker),
-                icon: const Icon(Icons.edit, size: 14),
-                label: const Text('Edit Profile', style: TextStyle(fontSize: 11)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildWorkerKpiBar(AppUser worker, ThemeData theme) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -281,10 +134,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ),
           Container(height: 24, width: 1, color: theme.colorScheme.outlineVariant),
           _buildKpiItem(
-            icon: worker.isWorkerPro ? Icons.workspace_premium : Icons.trending_up,
-            iconColor: worker.isWorkerPro ? Colors.orange.shade800 : theme.colorScheme.primary,
-            label: 'Rank Status',
-            value: worker.isWorkerPro ? '#1 PRO 👑' : 'Standard',
+            icon: Icons.verified_user_rounded,
+            iconColor: Colors.blue.shade700,
+            label: 'Platform Access',
+            value: 'Free & Open',
           ),
         ],
       ),
@@ -507,12 +360,74 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                         ],
                       ),
                     ),
+                    if (req.hasImages) ...[
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ServiceDetailsScreen(
+                                request: req,
+                                currentUser: worker,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3E8FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFD8B4FE)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.photo_library_rounded, size: 16, color: Color(0xFF7C3AED)),
+                              const SizedBox(width: 6),
+                              Text(
+                                '📷 ${req.images.length} Issue Photo${req.images.length > 1 ? "s" : ""} Attached • Tap to Inspect',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF6B21A8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
-                    // Actions: View Profile & Reviews | Accept | Decline
+                    // Actions: View Profile & Reviews | Inspect Photos | Accept | Decline
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,
                       children: [
+                        if (req.hasImages)
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF7C3AED),
+                              side: const BorderSide(color: Color(0xFFD8B4FE)),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: const Color(0xFFFAF5FF),
+                            ),
+                            icon: const Icon(Icons.photo_library_outlined, size: 16),
+                            label: Text('Inspect Photos (${req.images.length})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ServiceDetailsScreen(
+                                    request: req,
+                                    currentUser: worker,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         // View Customer Profile & Reviews
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
@@ -652,43 +567,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Text(
-                  worker.name,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                if (worker.isWorkerPro) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFFA000), Color(0xFFFF6F00)],
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.stars, color: Colors.white, size: 12),
-                        SizedBox(width: 3),
-                        Text(
-                          'PRO',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+            Text(
+              worker.name,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Text(
-              'Worker • ${worker.workerSkill ?? "General"}${worker.isWorkerPro ? " • Pro Partner" : ""}',
+              'Worker • ${worker.workerSkill ?? "General"}',
               style: TextStyle(
                 fontSize: 12,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -697,22 +581,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
         actions: [
-          // Pro Club Membership Button
-          IconButton(
-            tooltip: 'Worker Pro Club',
-            icon: Icon(
-              worker.isWorkerPro ? Icons.workspace_premium : Icons.stars_outlined,
-              color: worker.isWorkerPro ? Colors.amber.shade700 : null,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MembershipScreen(),
-                ),
-              );
-            },
-          ),
           NotificationBadgeButton(user: worker),
           IconButton(
             tooltip: 'Edit Profile & Details',
@@ -720,7 +588,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
             onPressed: () => EditProfileDialog.show(context, user: worker),
           ),
           IconButton(
-            tooltip: 'All Requests History',
+            tooltip: 'Service History',
             icon: const Icon(Icons.history_rounded),
             onPressed: () {
               Navigator.push(
@@ -768,90 +636,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
       ),
       body: Column(
         children: [
-          // Worker Pro Club Banner
-          InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MembershipScreen(),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: worker.isWorkerPro
-                      ? [const Color(0xFFE65100), const Color(0xFFF57C00)]
-                      : [const Color(0xFF424242), const Color(0xFF616161)],
-                ),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: (worker.isWorkerPro ? Colors.orange : Colors.black)
-                        .withValues(alpha: 0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    worker.isWorkerPro ? Icons.stars : Icons.workspace_premium,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          worker.isWorkerPro
-                              ? '⭐ VERIFIED PRO WORKER ACTIVE'
-                              : 'Upgrade to Worker Pro Club 🚀',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        Text(
-                          worker.isWorkerPro
-                              ? '#1 Ranking in search & 0% platform commission active'
-                              : 'Rank #1 in customer search, get Pro badge & 0% commission',
-                          style: const TextStyle(color: Colors.white70, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      worker.isWorkerPro ? 'View Perks' : 'Join Pro',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: worker.isWorkerPro
-                            ? const Color(0xFFE65100)
-                            : Colors.black87,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Persistent Worker Location Banner
-          _buildWorkerLocationBanner(worker, theme),
 
           // Worker Performance & Status KPI Bar
           _buildWorkerKpiBar(worker, theme),
@@ -962,38 +746,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                             ],
                           ),
                         ),
-
-                        // Alert banner if worker has not set their base location
-                        if (!worker.hasLocation)
-                          Container(
-                            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.amber.shade400),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Set your base location on the map to unlock 20 km proximity jobs.',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.amber.shade900,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _updateWorkerLocation(worker),
-                                  child: const Text('Set Pin', style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                          ),
 
                         // Job List
                         Expanded(
@@ -1141,6 +893,35 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                                         ),
                                                       ),
                                                     ),
+                                                    if (req.hasImages) ...[
+                                                      const SizedBox(width: 8),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFFF3E8FF),
+                                                          border: Border.all(color: const Color(0xFFD8B4FE)),
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            const Icon(Icons.photo_library, size: 12, color: Color(0xFF7C3AED)),
+                                                            const SizedBox(width: 4),
+                                                            Text(
+                                                              '${req.images.length} photo${req.images.length > 1 ? "s" : ""}',
+                                                              style: const TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: Color(0xFF7C3AED),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ],
                                                 ),
                                               ],
@@ -1152,6 +933,45 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                                   : 'No description provided',
                                               style: const TextStyle(fontSize: 15),
                                             ),
+                                            if (req.hasImages) ...[
+                                              const SizedBox(height: 8),
+                                              InkWell(
+                                                onTap: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) => ServiceDetailsScreen(request: req),
+                                                    ),
+                                                  );
+                                                },
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFFAF5FF),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(color: const Color(0xFFE9D5FF)),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(Icons.camera_alt, size: 14, color: Color(0xFF7C3AED)),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        '${req.images.length} Issue Photo${req.images.length > 1 ? "s" : ""} Attached • Tap to inspect before accepting',
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: Color(0xFF6B21A8),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      const Icon(Icons.chevron_right, size: 14, color: Color(0xFF7C3AED)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                             const SizedBox(height: 8),
                                             Row(
                                               children: [
@@ -1192,6 +1012,28 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                                       );
                                                     },
                                                   ),
+                                                if (req.hasImages) ...[
+                                                  const SizedBox(width: 8),
+                                                  OutlinedButton.icon(
+                                                    icon: const Icon(Icons.photo_library_outlined, size: 16, color: Color(0xFF7C3AED)),
+                                                    label: Text(
+                                                      'Photos (${req.images.length})',
+                                                      style: const TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.bold),
+                                                    ),
+                                                    style: OutlinedButton.styleFrom(
+                                                      side: const BorderSide(color: Color(0xFFD8B4FE)),
+                                                      backgroundColor: const Color(0xFFFAF5FF),
+                                                    ),
+                                                    onPressed: () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) => ServiceDetailsScreen(request: req),
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                ],
                                                 const SizedBox(width: 8),
                                                 TextButton(
                                                   onPressed: () {
@@ -1216,12 +1058,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                                       backgroundColor: Colors.red.shade50,
                                                     ),
                                                     onPressed: () => _showOutOfRadiusDialog(context, distanceKm),
-                                                  )
-                                                else if (!worker.hasLocation)
-                                                  FilledButton.tonalIcon(
-                                                    icon: const Icon(Icons.add_location_alt, size: 16),
-                                                    label: const Text('Set Pin to Accept'),
-                                                    onPressed: () => _updateWorkerLocation(worker),
                                                   )
                                                 else
                                                   FilledButton.icon(
@@ -1278,10 +1114,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                 StreamBuilder<List<ServiceRequest>>(
                   stream: dbService.streamWorkerJobs(worker.uid),
                   builder: (context, snapshot) {
-                    final jobs = snapshot.data ??
+                    final rawJobs = snapshot.data ??
                         dbService.allRequests
                             .where((r) => r.workerId == worker.uid)
                             .toList();
+                    final jobs = rawJobs.where((r) => _matchesWorkerSkill(worker, r)).toList();
 
                     if (jobs.isEmpty) {
                       return const Center(
@@ -1369,6 +1206,41 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                   spacing: 6,
                                   runSpacing: 4,
                                   children: [
+                                    if (job.hasImages)
+                                      InkWell(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => ServiceDetailsScreen(request: job),
+                                            ),
+                                          );
+                                        },
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF3E8FF),
+                                            border: Border.all(color: const Color(0xFFD8B4FE)),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.photo_library, size: 11, color: Color(0xFF7C3AED)),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '${job.images.length} Photo${job.images.length > 1 ? "s" : ""}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF7C3AED),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
@@ -1486,7 +1358,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                             ),
                             trailing: PopupMenuButton<String>(
                               onSelected: (val) async {
-                                if (val == 'view') {
+                                if (val == 'view' || val == 'photos') {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -1528,6 +1400,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                   value: 'view',
                                   child: Text('View Details'),
                                 ),
+                                if (job.hasImages)
+                                  PopupMenuItem(
+                                    value: 'photos',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.photo_library_outlined, size: 16, color: Color(0xFF7C3AED)),
+                                        const SizedBox(width: 8),
+                                        Text('Issue Photos (${job.images.length})'),
+                                      ],
+                                    ),
+                                  ),
                                 if (job.hasLocation)
                                   const PopupMenuItem(
                                     value: 'map',

@@ -10,6 +10,7 @@ import '../widgets/user_profile_dialog.dart';
 import '../widgets/review_dialog.dart';
 import '../widgets/submit_bill_dialog.dart';
 import '../widgets/razorpay_payment_sheet.dart';
+import '../widgets/app_image_view.dart';
 
 class ServiceDetailsScreen extends StatelessWidget {
   final ServiceRequest request;
@@ -693,6 +694,217 @@ class ServiceDetailsScreen extends StatelessWidget {
                           ? 'No description provided'
                           : currentReq.description,
                     ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ISSUE PHOTOS & VISUAL INSPECTION CARD
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3E8FF),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.photo_library_rounded,
+                                color: Color(0xFF7C3AED),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Issue Photos',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (currentReq.hasImages)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAF5FF),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFD8B4FE)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.camera_alt, size: 14, color: Color(0xFF7C3AED)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${currentReq.images.length} photo${currentReq.images.length > 1 ? "s" : ""}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF7C3AED),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isWorkerUser
+                          ? 'Visual inspection photos uploaded by customer to help you assess required tools and components before visiting.'
+                          : 'Photos attached to this request to assist the specialist with pre-arrival diagnosis.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    if (currentReq.hasImages) ...[
+                      SizedBox(
+                        height: 120,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: currentReq.images.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (ctx, idx) {
+                            final imgUrl = currentReq.images[idx];
+                            return GestureDetector(
+                              onTap: () => _showFullImageViewer(
+                                context,
+                                currentReq.images,
+                                idx,
+                                currentReq.service,
+                                currentReq.description,
+                              ),
+                              child: Container(
+                                width: 120,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.05),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(13),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      AppImageView(
+                                        imageUrl: imgUrl,
+                                        fit: BoxFit.cover,
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Colors.black.withValues(alpha: 0.7),
+                                              ],
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                '#${idx + 1}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.zoom_in, size: 13, color: Colors.white),
+                                                  SizedBox(width: 2),
+                                                  Text(
+                                                    'Zoom',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          Icon(Icons.touch_app_outlined, size: 14, color: Color(0xFF7C3AED)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tap any photo to open full-screen pinch & zoom inspection',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF7C3AED), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.no_photography_outlined, size: 20, color: Colors.grey.shade600),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                isWorkerUser
+                                    ? 'No photos uploaded by customer. You can inspect the condition on-site.'
+                                    : 'No issue photos attached to this request.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1606,6 +1818,192 @@ class ServiceDetailsScreen extends StatelessWidget {
       height: 2,
       margin: const EdgeInsets.only(bottom: 16),
       color: isActive ? theme.colorScheme.primary : Colors.grey.shade300,
+    );
+  }
+
+  void _showFullImageViewer(
+    BuildContext context,
+    List<String> images,
+    int initialIndex,
+    String service,
+    String description,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        int currentIndex = initialIndex;
+        final pageController = PageController(initialPage: initialIndex);
+
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.black,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  color: Colors.black,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Top Bar
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.photo_library_rounded, color: Colors.white, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Issue Inspection (${currentIndex + 1} of ${images.length})',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, color: Colors.white),
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Image View with PageView
+                      SizedBox(
+                        height: 380,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            PageView.builder(
+                              controller: pageController,
+                              itemCount: images.length,
+                              onPageChanged: (page) {
+                                setDialogState(() {
+                                  currentIndex = page;
+                                });
+                              },
+                              itemBuilder: (pCtx, pageIndex) {
+                                return InteractiveViewer(
+                                  minScale: 0.8,
+                                  maxScale: 4.0,
+                                  child: AppImageView(
+                                    imageUrl: images[pageIndex],
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => const Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                          SizedBox(height: 8),
+                                          Text(
+                                            'Failed to load full photo',
+                                            style: TextStyle(color: Colors.white70),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+
+                            // Prev button
+                            if (currentIndex > 0)
+                              Positioned(
+                                left: 8,
+                                child: IconButton.filled(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black54,
+                                  ),
+                                  icon: const Icon(Icons.chevron_left, color: Colors.white, size: 28),
+                                  onPressed: () {
+                                    pageController.previousPage(
+                                      duration: const Duration(milliseconds: 250),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  },
+                                ),
+                              ),
+
+                            // Next button
+                            if (currentIndex < images.length - 1)
+                              Positioned(
+                                right: 8,
+                                child: IconButton.filled(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black54,
+                                  ),
+                                  icon: const Icon(Icons.chevron_right, color: Colors.white, size: 28),
+                                  onPressed: () {
+                                    pageController.nextPage(
+                                      duration: const Duration(milliseconds: 250),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      // Bottom Info Caption
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        color: const Color(0xFF1E293B),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF3B82F6),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    service,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Pinch or double-tap to zoom in',
+                                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                            if (description.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                description,
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

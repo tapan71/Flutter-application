@@ -132,33 +132,7 @@ class UserProfileDialog extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (user.isWorkerPro) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFFFFA000), Color(0xFFFF6F00)],
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.stars, color: Colors.white, size: 14),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'PRO WORKER',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ] else if (user.isCustomerMember) ...[
+                              if (user.isCustomerMember) ...[
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -229,94 +203,86 @@ class UserProfileDialog extends StatelessWidget {
                             ],
                           ),
 
-                          // Membership Card & Action
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: user.hasActiveMembership
-                                  ? (user.isWorker
-                                      ? Colors.orange.shade50
-                                      : Colors.blue.shade50)
-                                  : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
+                          // Customer Membership Card & Action (Workers work freely without membership)
+                          if (!user.isWorker) ...[
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
                                 color: user.hasActiveMembership
-                                    ? (user.isWorker
-                                        ? Colors.orange.shade300
-                                        : Colors.blue.shade300)
-                                    : Colors.grey.shade300,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  user.hasActiveMembership
-                                      ? Icons.workspace_premium
-                                      : Icons.stars_outlined,
+                                    ? Colors.blue.shade50
+                                    : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
                                   color: user.hasActiveMembership
-                                      ? (user.isWorker
-                                          ? Colors.orange.shade800
-                                          : const Color(0xFF1E88E5))
-                                      : Colors.grey.shade700,
-                                  size: 22,
+                                      ? Colors.blue.shade300
+                                      : Colors.grey.shade300,
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        user.hasActiveMembership
-                                            ? 'Plan: ${user.membershipTier ?? "Active Plan"}'
-                                            : 'Free Plan Account',
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    user.hasActiveMembership
+                                        ? Icons.workspace_premium
+                                        : Icons.stars_outlined,
+                                    color: user.hasActiveMembership
+                                        ? const Color(0xFF1E88E5)
+                                        : Colors.grey.shade700,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          user.hasActiveMembership
+                                              ? 'Plan: ${user.membershipTier ?? "Active Plan"}'
+                                              : 'Free Plan Account',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        Text(
+                                          user.hasActiveMembership
+                                              ? '₹0 Inspection Fee on all service requests'
+                                              : 'Upgrade to unlock zero inspection fees & perks',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (showEditProfileButton)
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => const MembershipScreen(),
+                                          ),
+                                        );
+                                      },
+                                      child: Text(
+                                        user.hasActiveMembership ? 'Manage' : 'Upgrade',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 13,
+                                          color: Color(0xFF1E88E5),
                                         ),
-                                      ),
-                                      Text(
-                                        user.hasActiveMembership
-                                            ? (user.isWorker
-                                                ? 'Top Category Rank & Verified Pro Badge active'
-                                                : '₹0 Inspection Fee on all service requests')
-                                            : 'Upgrade to unlock zero inspection fees & Pro perks',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (showEditProfileButton)
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const MembershipScreen(),
-                                        ),
-                                      );
-                                    },
-                                    child: Text(
-                                      user.hasActiveMembership ? 'Manage' : 'Upgrade',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: user.isWorker
-                                            ? Colors.orange.shade900
-                                            : const Color(0xFF1E88E5),
                                       ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
 
                           // Prominent Edit Profile button for customer/worker viewing own profile
                           if (showEditProfileButton) ...[
@@ -439,7 +405,19 @@ class UserProfileDialog extends StatelessWidget {
                     StreamBuilder<List<Review>>(
                       stream: dbService.streamReviewsForUser(user.uid),
                       builder: (context, snapshot) {
-                        final reviews = snapshot.data ?? dbService.getReviewsForUser(user.uid);
+                        final rawReviews = snapshot.data ?? dbService.getReviewsForUser(user.uid);
+                        final reviews = user.isWorker &&
+                                user.workerSkill != null &&
+                                user.workerSkill!.isNotEmpty &&
+                                user.workerSkill!.toLowerCase() != 'general service' &&
+                                user.workerSkill!.toLowerCase() != 'all'
+                            ? rawReviews.where((r) {
+                                final s = r.service.trim().toLowerCase();
+                                return s == user.workerSkill!.trim().toLowerCase() ||
+                                    s == 'general service' ||
+                                    s == 'general';
+                              }).toList()
+                            : rawReviews;
                         if (reviews.isEmpty) {
                           return Container(
                             padding: const EdgeInsets.all(16),

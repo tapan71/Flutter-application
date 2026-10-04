@@ -4,10 +4,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:provider/provider.dart';
 import 'package:localserve/main.dart';
 import 'package:localserve/models/user_model.dart';
+import 'package:localserve/screens/auth/register_screen.dart';
+import 'package:localserve/screens/history_screen.dart';
+import 'package:localserve/screens/service_request_screen.dart';
 import 'package:localserve/services/auth_service.dart';
+import 'package:localserve/services/database_service.dart';
+import 'package:localserve/services/geocoding_service.dart';
 import 'package:localserve/services/local_storage_service.dart';
+import 'package:localserve/widgets/app_image_view.dart';
 
 void main() {
   setUpAll(() {
@@ -16,33 +23,57 @@ void main() {
 
   setUp(() {
     LocalStorageService().resetForTesting();
+    GeocodingService.mockLocationForTesting = const LocationSearchResult(
+      latitude: 23.0225,
+      longitude: 72.5714,
+      displayName: 'Navrangpura, Ahmedabad, Gujarat',
+      road: 'Navrangpura',
+      city: 'Ahmedabad',
+      state: 'Gujarat',
+      isLiveGps: true,
+    );
   });
 
   testWidgets(
     'LocalServe displays LoginScreen when unauthenticated',
     (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1000, 1400);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
-      // Check LocalServe branding
-      expect(find.text('LocalServe'), findsOneWidget);
+      // Check LocalServe branding & header
+      expect(find.text('LOCALSERVE ON-DEMAND'), findsOneWidget);
+      expect(find.text('Welcome Back'), findsOneWidget);
 
       // Check Sign In button
-      expect(find.widgetWithText(FilledButton, 'Sign In'), findsOneWidget);
+      expect(find.text('Sign In'), findsOneWidget);
 
       // Check Role chips for quick demo login
-      expect(find.text('Customer Demo'), findsOneWidget);
-      expect(find.text('Worker Demo'), findsOneWidget);
+      expect(find.text('Customer'), findsOneWidget);
+      expect(find.text('Worker (Plumbing)'), findsOneWidget);
     },
   );
 
   testWidgets(
     '1-click Customer demo sign-in navigates to Customer Dashboard',
     (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1000, 1400);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
-      final customerChip = find.widgetWithText(ActionChip, 'Customer Demo');
+      final customerChip = find.text('Customer');
       expect(customerChip, findsOneWidget);
       await tester.ensureVisible(customerChip);
       await tester.pumpAndSettle();
@@ -58,7 +89,7 @@ void main() {
     '1-click Worker demo sign-in navigates to Worker Dashboard',
     (WidgetTester tester) async {
       tester.view.devicePixelRatio = 1.0;
-      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.physicalSize = const Size(1000, 1400);
       addTearDown(() {
         tester.view.resetDevicePixelRatio();
         tester.view.resetPhysicalSize();
@@ -67,7 +98,7 @@ void main() {
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
-      final workerChip = find.widgetWithText(ActionChip, 'Worker Demo');
+      final workerChip = find.text('Worker (Plumbing)');
       expect(workerChip, findsOneWidget);
       await tester.ensureVisible(workerChip);
       await tester.pumpAndSettle();
@@ -77,6 +108,10 @@ void main() {
 
       expect(find.text('Available Jobs'), findsOneWidget);
       expect(find.text('My Active Jobs'), findsOneWidget);
+
+      // Verify "My Location" banner is completely removed from worker dashboard
+      expect(find.text('My Location (OpenStreetMap)'), findsNothing);
+      expect(find.text('Set your base location on the map to unlock 20 km proximity jobs.'), findsNothing);
     },
   );
 
@@ -111,13 +146,20 @@ void main() {
   );
 
   testWidgets(
-    'Customer request auto-fills name, email, phone, and address by default and allows editing',
+    'Customer request auto-fills name, email, phone, and address by default and shows issue photos section',
     (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1000, 1400);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
       await tester.pumpWidget(const LocalServeApp());
       await tester.pumpAndSettle();
 
       // Sign in as Customer demo
-      final customerChip = find.widgetWithText(ActionChip, 'Customer Demo');
+      final customerChip = find.text('Customer');
       await tester.ensureVisible(customerChip);
       await tester.pumpAndSettle();
       await tester.tap(customerChip);
@@ -129,9 +171,9 @@ void main() {
       await tester.tap(requestButton);
       await tester.pumpAndSettle();
 
-      // Verify ServiceRequestScreen is opened
-      expect(find.text('Plumbing Request'), findsOneWidget);
-      expect(find.text('Account Defaults Auto-filled'), findsOneWidget);
+      // Verify ServiceRequestScreen is opened with Service Type and Issue Photos section
+      expect(find.text('Service Type'), findsOneWidget);
+      expect(find.text('Issue Photos'), findsOneWidget);
 
       // Verify name is prefilled and can be changed
       final nameFinder = find.widgetWithText(TextFormField, 'John Customer');
@@ -150,9 +192,177 @@ void main() {
       await tester.ensureVisible(mobileFinder);
       await tester.pumpAndSettle();
       expect(mobileFinder, findsOneWidget);
+
+      // Verify Take Photo & Phone Storage quick buttons are displayed
+      expect(find.text('Take Photo'), findsOneWidget);
+      expect(find.text('Phone Storage'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'AppImageView renders base64 image data URI correctly',
+    (WidgetTester tester) async {
+      const base64Png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AppImageView(
+              imageUrl: base64Png,
+              width: 100,
+              height: 100,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+    },
+  );
+
+  test(
+    'Worker history data integrity: Plumber worker strictly has only Plumbing history and reviews',
+    () async {
+      final db = DatabaseService();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final allReqs = db.allRequests;
+      final plumberReqs = allReqs.where((r) => r.workerId == 'demo_worker_1').toList();
+
+      expect(plumberReqs.isNotEmpty, isTrue);
+      for (final req in plumberReqs) {
+        expect(
+          req.service,
+          equals('Plumbing'),
+          reason: 'Plumber worker jobs must strictly be Plumbing and never other trades',
+        );
+      }
+
+      final reviews = db.getReviewsForUser('demo_worker_1');
+      for (final rev in reviews) {
+        expect(
+          rev.service,
+          equals('Plumbing'),
+          reason: 'Reviews for plumber must strictly be Plumbing',
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'Service request screen provides 1-tap Live GPS button and Map picker in Address field',
+    (WidgetTester tester) async {
+      final auth = AuthService();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthService>.value(value: auth),
+          ],
+          child: const MaterialApp(
+            home: ServiceRequestScreen(
+              selectedService: 'Plumbing',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify that both GPS button and Map button are displayed on Address field
+      expect(find.text('GPS'), findsOneWidget);
+      expect(find.text('Map'), findsOneWidget);
+      expect(find.byIcon(Icons.my_location), findsOneWidget);
+      expect(find.byIcon(Icons.map_rounded), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Worker service history page has no upper right corner items (Showing My Requests)',
+    (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1000, 1400);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      final auth = AuthService();
+      final db = DatabaseService();
+      final workerUser = AppUser(
+        uid: 'demo_worker_plumber',
+        email: 'plumber@localserve.com',
+        name: 'John Plumber',
+        mobile: '9876543210',
+        role: UserRole.worker,
+        workerSkill: 'Plumbing',
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthService>.value(value: auth),
+            ChangeNotifierProvider<DatabaseService>.value(value: db),
+          ],
+          child: MaterialApp(
+            home: HistoryScreen(
+              currentUser: workerUser,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Service History'), findsOneWidget);
+      // Ensure upper-right actions (filter icon or "Showing My Requests") are NOT present
+      expect(find.byTooltip('Showing My Requests'), findsNothing);
+      expect(find.byTooltip('Showing All Requests'), findsNothing);
+      expect(find.byIcon(Icons.filter_alt), findsNothing);
+      expect(find.byIcon(Icons.filter_alt_outlined), findsNothing);
+      expect(find.text('Show All History'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Register page loads without dialogs or notification popups, allowing address modification',
+    (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1000, 1400);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      final auth = AuthService();
+      final db = DatabaseService();
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthService>.value(value: auth),
+            ChangeNotifierProvider<DatabaseService>.value(value: db),
+          ],
+          child: const MaterialApp(
+            home: RegisterScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Ensure no dialog or notification popped up
+      expect(find.text('Use Current Location as Address?'), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      // Verify live location was automatically put into the address field
+      expect(find.text('Navrangpura, Ahmedabad, Gujarat'), findsOneWidget);
+
+      // Verify base address field exists and user can change it
+      expect(find.text('Base Address & Map Location:'), findsOneWidget);
+      expect(find.byType(TextFormField), findsWidgets);
     },
   );
 }
+
 
 class _TestHttpOverrides extends HttpOverrides {
   @override

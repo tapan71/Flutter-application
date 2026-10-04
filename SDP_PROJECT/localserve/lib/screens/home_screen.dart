@@ -882,8 +882,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: pro.isWorkerPro ? Colors.amber.shade400 : Colors.grey.shade300,
-                              width: pro.isWorkerPro ? 1.5 : 1,
+                              color: Colors.grey.shade300,
+                              width: 1,
                             ),
                           ),
                           child: InkWell(
@@ -901,20 +901,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              pro.name,
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (pro.isWorkerPro) ...[
-                                            const SizedBox(width: 3),
-                                            const Icon(Icons.stars, size: 11, color: Colors.orange),
-                                          ],
-                                        ],
+                                      Text(
+                                        pro.name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       Text(
                                         pro.workerSkill ?? 'General',

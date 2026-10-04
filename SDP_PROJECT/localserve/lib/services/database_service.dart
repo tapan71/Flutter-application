@@ -68,16 +68,16 @@ class DatabaseService extends ChangeNotifier {
     ),
     ServiceRequest(
       id: 'req_2',
-      service: 'Electrical',
+      service: 'Plumbing',
       name: 'Sarah Connor',
       email: 'sarah@example.com',
       mobile: '9811223344',
-      address: '44 Hill View Avenue',
+      address: '44 Hill View Avenue, Navrangpura',
       latitude: 23.0338,
       longitude: 72.5850,
       priority: 'Medium',
       reminder: false,
-      description: 'Living room ceiling fan regulator sparking.',
+      description: 'Bathroom washbasin faucet leakage & new mixer tap installation.',
       dueDate: DateTime.now().add(const Duration(days: 2)),
       status: 'assigned',
       customerId: 'demo_customer_2',
@@ -87,7 +87,7 @@ class DatabaseService extends ChangeNotifier {
     ),
     ServiceRequest(
       id: 'req_3',
-      service: 'Cleaning',
+      service: 'Plumbing',
       name: 'John Customer',
       email: 'customer@localserve.com',
       mobile: '9876543210',
@@ -96,7 +96,7 @@ class DatabaseService extends ChangeNotifier {
       longitude: 72.5714,
       priority: 'Low',
       reminder: false,
-      description: 'Deep bathroom and balcony cleaning before weekend.',
+      description: 'Overhead water tank float valve and pipeline joint leakage repair.',
       dueDate: DateTime.now().subtract(const Duration(days: 2)),
       status: 'completed',
       customerId: 'demo_customer_1',
@@ -140,6 +140,48 @@ class DatabaseService extends ChangeNotifier {
       customerId: 'demo_customer_4',
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
     ),
+    ServiceRequest(
+      id: 'req_clean_1',
+      service: 'Cleaning',
+      name: 'Kavita Patel',
+      email: 'kavita@example.com',
+      mobile: '9822446688',
+      address: '302 Shivalik Residency, Bodakdev, Ahmedabad',
+      latitude: 23.0390,
+      longitude: 72.5120,
+      priority: 'Low',
+      reminder: false,
+      description: 'Deep 3BHK apartment sanitization and balcony cleaning before family function.',
+      dueDate: DateTime.now().subtract(const Duration(days: 5)),
+      status: 'completed',
+      customerId: 'demo_customer_1',
+      workerId: 'demo_worker_5',
+      workerName: 'Anita Verma',
+      createdAt: DateTime.now().subtract(const Duration(days: 6)),
+      customerReviewed: true,
+      workerReviewed: true,
+    ),
+    ServiceRequest(
+      id: 'req_elec_1',
+      service: 'Electrical',
+      name: 'Sarah Connor',
+      email: 'sarah@example.com',
+      mobile: '9811223344',
+      address: '44 Hill View Avenue, Navrangpura',
+      latitude: 23.0338,
+      longitude: 72.5850,
+      priority: 'Medium',
+      reminder: false,
+      description: 'Living room ceiling fan regulator sparking & switchboard upgrade.',
+      dueDate: DateTime.now().subtract(const Duration(days: 4)),
+      status: 'completed',
+      customerId: 'demo_customer_2',
+      workerId: 'demo_worker_pro',
+      workerName: 'Vikram Singh',
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+      customerReviewed: true,
+      workerReviewed: true,
+    ),
   ];
 
   static final List<AppUser> _defaultUsers = [
@@ -172,9 +214,6 @@ class DatabaseService extends ChangeNotifier {
       rating: 4.9,
       ratingCount: 18,
       completedJobsCount: 24,
-      isProMember: true,
-      membershipPlan: 'worker_pro_monthly',
-      membershipTier: 'PRO WORKER',
     ),
     const AppUser(
       uid: 'demo_worker_2',
@@ -239,9 +278,6 @@ class DatabaseService extends ChangeNotifier {
       rating: 5.0,
       ratingCount: 31,
       completedJobsCount: 45,
-      isProMember: true,
-      membershipPlan: 'worker_pro_monthly',
-      membershipTier: 'PRO WORKER',
     ),
     const AppUser(
       uid: 'demo_worker_6',
@@ -297,20 +333,20 @@ class DatabaseService extends ChangeNotifier {
     Review(
       id: 'rev_1',
       requestId: 'req_3',
-      service: 'Cleaning',
+      service: 'Plumbing',
       fromUserId: 'demo_customer_1',
       fromUserName: 'John Customer',
       fromUserRole: 'customer',
       toUserId: 'demo_worker_1',
       toUserName: 'Alex Plumber',
       rating: 5.0,
-      comment: 'Super fast, punctual, and thoroughly cleaned the apartment. Highly recommend!',
+      comment: 'Super fast, punctual, and repaired the leaking overhead pipeline perfectly. Highly recommend for plumbing!',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
     ),
     Review(
       id: 'rev_2',
       requestId: 'req_3',
-      service: 'Cleaning',
+      service: 'Plumbing',
       fromUserId: 'demo_worker_1',
       fromUserName: 'Alex Plumber',
       fromUserRole: 'worker',
@@ -319,6 +355,32 @@ class DatabaseService extends ChangeNotifier {
       rating: 5.0,
       comment: 'Polite and clear communication. Immediate payment upon work completion.',
       createdAt: DateTime.now().subtract(const Duration(days: 2)),
+    ),
+    Review(
+      id: 'rev_clean_1',
+      requestId: 'req_clean_1',
+      service: 'Cleaning',
+      fromUserId: 'demo_customer_1',
+      fromUserName: 'John Customer',
+      fromUserRole: 'customer',
+      toUserId: 'demo_worker_5',
+      toUserName: 'Anita Verma',
+      rating: 5.0,
+      comment: 'Outstanding deep cleaning service! The kitchen and balcony were sparkling clean.',
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+    ),
+    Review(
+      id: 'rev_elec_1',
+      requestId: 'req_elec_1',
+      service: 'Electrical',
+      fromUserId: 'demo_customer_2',
+      fromUserName: 'Sarah Connor',
+      fromUserRole: 'customer',
+      toUserId: 'demo_worker_pro',
+      toUserName: 'Vikram Singh',
+      rating: 5.0,
+      comment: 'Expert electrician, quickly replaced faulty sparking switches and restored power safely.',
+      createdAt: DateTime.now().subtract(const Duration(days: 4)),
     ),
   ];
 
@@ -375,6 +437,17 @@ class DatabaseService extends ChangeNotifier {
       }
     } else {
       _mockRequests.addAll(savedReqs);
+      // Ensure all default requests (including new demo requests like req_clean_1, req_elec_1) exist
+      for (final def in _defaultRequests) {
+        final idx = _mockRequests.indexWhere((r) => r.id == def.id);
+        if (idx == -1) {
+          _mockRequests.add(def);
+          await _storage.saveRequest(def);
+        } else if (_mockRequests[idx].service != def.service && (def.id == 'req_2' || def.id == 'req_3')) {
+          _mockRequests[idx] = def;
+          await _storage.saveRequest(def);
+        }
+      }
     }
 
     // 2. Load Users
@@ -389,6 +462,7 @@ class DatabaseService extends ChangeNotifier {
       for (final def in _defaultUsers) {
         if (!_mockUsers.any((u) => u.uid == def.uid)) {
           _mockUsers.add(def);
+          await _storage.saveUser(def);
         }
       }
     }
@@ -413,6 +487,60 @@ class DatabaseService extends ChangeNotifier {
       }
     } else {
       _mockReviews.addAll(savedRevs);
+      for (final def in _defaultReviews) {
+        final idx = _mockReviews.indexWhere((r) => r.id == def.id);
+        if (idx == -1) {
+          _mockReviews.add(def);
+          await _storage.saveReview(def);
+        } else if (_mockReviews[idx].service != def.service && (def.id == 'rev_1' || def.id == 'rev_2')) {
+          _mockReviews[idx] = def;
+          await _storage.saveReview(def);
+        }
+      }
+    }
+
+    // 5. Enforce trade specialization integrity across demo workers:
+    // A Plumber (demo_worker_1) must ONLY have Plumbing jobs and Plumbing reviews.
+    for (int i = 0; i < _mockRequests.length; i++) {
+      final req = _mockRequests[i];
+      if (req.workerId == 'demo_worker_1' && req.service.toLowerCase() != 'plumbing') {
+        final fixed = req.copyWith(
+          service: 'Plumbing',
+          description: req.id == 'req_2'
+              ? 'Bathroom washbasin faucet leakage & new mixer tap installation.'
+              : (req.id == 'req_3'
+                  ? 'Overhead water tank float valve and pipeline joint leakage repair.'
+                  : 'Plumbing repair and pipeline maintenance.'),
+        );
+        _mockRequests[i] = fixed;
+        await _storage.saveRequest(fixed);
+      }
+    }
+
+    for (int i = 0; i < _mockReviews.length; i++) {
+      final rev = _mockReviews[i];
+      if ((rev.toUserId == 'demo_worker_1' || rev.fromUserId == 'demo_worker_1') &&
+          rev.service.toLowerCase() != 'plumbing') {
+        final fixedRev = Review(
+          id: rev.id,
+          requestId: rev.requestId,
+          service: 'Plumbing',
+          fromUserId: rev.fromUserId,
+          fromUserName: rev.fromUserName,
+          fromUserRole: rev.fromUserRole,
+          toUserId: rev.toUserId,
+          toUserName: rev.toUserName,
+          rating: rev.rating,
+          comment: rev.id == 'rev_1'
+              ? 'Super fast, punctual, and repaired the leaking overhead pipeline perfectly. Highly recommend for plumbing!'
+              : (rev.id == 'rev_2'
+                  ? 'Polite and clear communication. Immediate payment upon work completion.'
+                  : rev.comment.replaceAll(RegExp(r'cleaned', caseSensitive: false), 'repaired')),
+          createdAt: rev.createdAt,
+        );
+        _mockReviews[i] = fixedRev;
+        await _storage.saveReview(fixedRev);
+      }
     }
 
     _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
@@ -528,11 +656,41 @@ class DatabaseService extends ChangeNotifier {
           .snapshots()
           .map((snapshot) => snapshot.docs
               .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+              .where((r) {
+                final user = _mockUsers.cast<AppUser?>().firstWhere(
+                      (u) => u?.uid == workerId,
+                      orElse: () => _defaultUsers.cast<AppUser?>().firstWhere(
+                            (u) => u?.uid == workerId,
+                            orElse: () => null,
+                          ),
+                    );
+                final skill = user?.workerSkill?.trim().toLowerCase();
+                if (skill == null || skill.isEmpty || skill == 'general service' || skill == 'all') {
+                  return true;
+                }
+                final reqService = r.service.trim().toLowerCase();
+                return reqService == skill || reqService == 'general service' || reqService == 'general';
+              })
               .toList());
     } else {
       return Stream<List<ServiceRequest>>.multi((controller) {
         List<ServiceRequest> filter(List<ServiceRequest> list) {
-          return list.where((r) => r.workerId == workerId).toList();
+          final user = _mockUsers.cast<AppUser?>().firstWhere(
+                (u) => u?.uid == workerId,
+                orElse: () => _defaultUsers.cast<AppUser?>().firstWhere(
+                      (u) => u?.uid == workerId,
+                      orElse: () => null,
+                    ),
+              );
+          final skill = user?.workerSkill?.trim().toLowerCase();
+          return list.where((r) {
+            if (r.workerId != workerId) return false;
+            if (skill == null || skill.isEmpty || skill == 'general service' || skill == 'all') {
+              return true;
+            }
+            final reqService = r.service.trim().toLowerCase();
+            return reqService == skill || reqService == 'general service' || reqService == 'general';
+          }).toList();
         }
 
         controller.add(filter(_mockRequests));
@@ -1482,11 +1640,8 @@ class DatabaseService extends ChangeNotifier {
       return skill == catNorm;
     }).toList();
 
-    // Sort: 1) Pro Workers First, 2) Distance, 3) Highest Rating
+    // Sort: 1) Distance (Nearest First), 2) Highest Rating
     workers.sort((a, b) {
-      if (a.isWorkerPro && !b.isWorkerPro) return -1;
-      if (!a.isWorkerPro && b.isWorkerPro) return 1;
-
       if (customerLat != null && customerLon != null) {
         final distA = calculateDistanceKm(
               lat1: customerLat,

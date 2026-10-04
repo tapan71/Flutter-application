@@ -33,15 +33,24 @@ class LocalStorageService {
   bool get isInitialized => _initialized;
   String? get activeUserId => _activeUserId;
 
+  bool get _isTestEnv {
+    if (kIsWeb) return false;
+    try {
+      return Platform.environment.containsKey('FLUTTER_TEST');
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> init() async {
     if (_initialized) return;
 
     try {
-      if (!kIsWeb && !Platform.environment.containsKey('FLUTTER_TEST')) {
+      if (!kIsWeb && !_isTestEnv) {
         await _resolveStoragePath();
       }
       
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      if (!_isTestEnv) {
         try {
           _prefs = await SharedPreferences.getInstance();
         } catch (e) {
@@ -68,7 +77,7 @@ class LocalStorageService {
   }
 
   Future<void> _resolveStoragePath() async {
-    if (kIsWeb || Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (kIsWeb || _isTestEnv) {
       _storagePath = null;
       return;
     }
@@ -114,7 +123,7 @@ class LocalStorageService {
   }
 
   Future<void> _ensurePrefs() async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_isTestEnv) return;
     if (_prefs == null) {
       try {
         _prefs = await SharedPreferences.getInstance();
@@ -126,7 +135,7 @@ class LocalStorageService {
 
   Future<void> _loadFromDisk() async {
     try {
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      if (!_isTestEnv) {
         await _ensurePrefs();
       }
       String? jsonRaw;
@@ -137,7 +146,7 @@ class LocalStorageService {
       }
 
       // 2. If not in SharedPreferences or empty, check disk file
-      if ((jsonRaw == null || jsonRaw.trim().isEmpty) && _storagePath != null) {
+      if (!kIsWeb && (jsonRaw == null || jsonRaw.trim().isEmpty) && _storagePath != null) {
         final file = File(_storagePath!);
         if (await file.exists()) {
           jsonRaw = await file.readAsString();
@@ -194,6 +203,68 @@ class LocalStorageService {
             _reviews.add(Review.fromMap(rev));
           }
         }
+      }
+
+      // Enforce data integrity: A specialized worker like Alex Plumber (demo_worker_1)
+      // must strictly have Plumbing requests and Plumbing reviews, never other work like Cleaning.
+      bool needsFlush = false;
+      if (_requests.containsKey('req_2')) {
+        final r = _requests['req_2']!;
+        if (r.workerId == 'demo_worker_1' && r.service != 'Plumbing') {
+          _requests['req_2'] = r.copyWith(
+            service: 'Plumbing',
+            address: '44 Hill View Avenue, Navrangpura',
+            description: 'Bathroom washbasin faucet leakage & new mixer tap installation.',
+          );
+          needsFlush = true;
+        }
+      }
+      if (_requests.containsKey('req_3')) {
+        final r = _requests['req_3']!;
+        if (r.workerId == 'demo_worker_1' && r.service != 'Plumbing') {
+          _requests['req_3'] = r.copyWith(
+            service: 'Plumbing',
+            description: 'Overhead water tank float valve and pipeline joint leakage repair.',
+          );
+          needsFlush = true;
+        }
+      }
+      for (final id in _requests.keys.toList()) {
+        final r = _requests[id]!;
+        if (r.workerId == 'demo_worker_1' && r.service.trim().toLowerCase() != 'plumbing') {
+          _requests[id] = r.copyWith(
+            service: 'Plumbing',
+            description: 'Plumbing pipeline joint & tap repair.',
+          );
+          needsFlush = true;
+        }
+      }
+      for (int i = 0; i < _reviews.length; i++) {
+        final rev = _reviews[i];
+        if ((rev.toUserId == 'demo_worker_1' || rev.fromUserId == 'demo_worker_1') &&
+            rev.service.trim().toLowerCase() != 'plumbing') {
+          _reviews[i] = Review(
+            id: rev.id,
+            requestId: rev.requestId,
+            service: 'Plumbing',
+            fromUserId: rev.fromUserId,
+            fromUserName: rev.fromUserName,
+            fromUserRole: rev.fromUserRole,
+            toUserId: rev.toUserId,
+            toUserName: rev.toUserName,
+            rating: rev.rating,
+            comment: rev.id == 'rev_1'
+                ? 'Super fast, punctual, and repaired the leaking overhead pipeline perfectly. Highly recommend for plumbing!'
+                : (rev.id == 'rev_2'
+                    ? 'Polite and clear communication. Immediate payment upon work completion.'
+                    : rev.comment.replaceAll(RegExp(r'cleaned', caseSensitive: false), 'repaired')),
+            createdAt: rev.createdAt,
+          );
+          needsFlush = true;
+        }
+      }
+      if (needsFlush) {
+        await _flushToDisk();
       }
     } catch (e) {
       debugPrint('Error loading persistent storage: $e');

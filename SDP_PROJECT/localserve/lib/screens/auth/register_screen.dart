@@ -28,7 +28,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   double? _selectedLatitude;
   double? _selectedLongitude;
   bool _isDetectingLocation = false;
-  bool _askedLocationPrompt = false;
 
   final List<String> _serviceCategories = [
     'Plumbing',
@@ -44,44 +43,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _promptForDefaultLocation();
+      if (_addressController.text.isEmpty) {
+        _detectAndSetLocation(showFeedback: false);
+      }
     });
   }
 
-  Future<void> _promptForDefaultLocation() async {
-    if (!mounted || _askedLocationPrompt || _addressController.text.isNotEmpty) return;
-    _askedLocationPrompt = true;
-
-    final accepted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogCtx) => AlertDialog(
-        icon: const Icon(Icons.my_location, size: 40, color: Colors.blue),
-        title: const Text('Use Current Location as Address?'),
-        content: const Text(
-          'LocalServe can automatically detect your current location and use it as your default address via OpenStreetMap.\n\n'
-          'If you accept, your address and map coordinates will be filled automatically. You can also decline and type your address manually.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text("No, I'll Type Manually"),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            icon: const Icon(Icons.check),
-            label: const Text('Accept & Use Location'),
-          ),
-        ],
-      ),
-    );
-
-    if (accepted == true && mounted) {
-      await _detectAndSetLocation();
-    }
-  }
-
-  Future<void> _detectAndSetLocation() async {
+  Future<void> _detectAndSetLocation({bool showFeedback = true}) async {
     setState(() {
       _isDetectingLocation = true;
       _errorMessage = null;
@@ -92,20 +60,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (result != null) {
+        final addressStr = result.shortAddress.isNotEmpty
+            ? result.shortAddress
+            : result.displayName;
         setState(() {
           _selectedLatitude = result.latitude;
           _selectedLongitude = result.longitude;
-          _addressController.text = result.shortAddress;
+          _addressController.text = addressStr;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('📍 Location detected: ${result.shortAddress}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else {
+        if (showFeedback) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📍 Location detected: $addressStr'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else if (showFeedback) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not auto-detect location. Please select on map or type manually.'),
@@ -524,8 +497,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               const SizedBox(height: 18),
 
                               // Address Header & Location Helper Actions
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              Wrap(
+                                alignment: WrapAlignment.spaceBetween,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 4,
                                 children: [
                                   const Text(
                                     'Base Address & Map Location:',

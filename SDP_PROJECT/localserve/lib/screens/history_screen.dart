@@ -87,21 +87,36 @@ class _HistoryScreenState extends State<HistoryScreen>
     final user = widget.currentUser;
 
     return StreamBuilder<List<ServiceRequest>>(
-      stream: dbService.streamCustomerRequests(
-        user.uid,
-        customerEmail: user.email,
-      ),
-      builder: (context, snapshot) {
-        // Collect customer requests or all system requests based on toggle
-        final customerRequests = snapshot.data ??
-            dbService.getCustomerRequests(
+      stream: user.isWorker
+          ? dbService.streamWorkerJobs(user.uid)
+          : dbService.streamCustomerRequests(
               user.uid,
               customerEmail: user.email,
-            );
+            ),
+      builder: (context, snapshot) {
+        // Collect customer requests or worker jobs based on user role
+        final rawRoleRequests = snapshot.data ??
+            (user.isWorker
+                ? dbService.allRequests.where((r) => r.workerId == user.uid).toList()
+                : dbService.getCustomerRequests(
+                    user.uid,
+                    customerEmail: user.email,
+                  ));
 
-        final sourceList = _showAllSystemRequests
+        // When displaying requests for this user, strictly enforce skill integrity if worker
+        final myRequests = user.isWorker
+            ? rawRoleRequests.where((r) {
+                if (user.workerSkill == null || user.workerSkill!.isEmpty) return true;
+                final skill = user.workerSkill!.trim().toLowerCase();
+                if (skill == 'general service' || skill == 'all') return true;
+                final s = r.service.trim().toLowerCase();
+                return s == skill || s == 'general service' || s == 'general';
+              }).toList()
+            : rawRoleRequests;
+
+        final sourceList = (!user.isWorker && _showAllSystemRequests)
             ? dbService.allRequests
-            : customerRequests;
+            : myRequests;
 
         final query = _searchQuery.trim().toLowerCase();
         final filteredBySearch = sourceList.where((req) {
@@ -132,36 +147,38 @@ class _HistoryScreenState extends State<HistoryScreen>
               'Service History',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            actions: [
-              IconButton(
-                tooltip: _showAllSystemRequests
-                    ? 'Showing All Requests'
-                    : 'Showing My Requests',
-                icon: Icon(
-                  _showAllSystemRequests
-                      ? Icons.filter_alt
-                      : Icons.filter_alt_outlined,
-                  color: _showAllSystemRequests
-                      ? theme.colorScheme.primary
-                      : null,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _showAllSystemRequests = !_showAllSystemRequests;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      duration: const Duration(seconds: 2),
-                      content: Text(
+            actions: user.isWorker
+                ? null
+                : [
+                    IconButton(
+                      tooltip: _showAllSystemRequests
+                          ? 'Showing All Requests'
+                          : 'Showing My Requests',
+                      icon: Icon(
                         _showAllSystemRequests
-                            ? 'Displaying all system requests'
-                            : 'Displaying requests for ${user.name}',
+                            ? Icons.filter_alt
+                            : Icons.filter_alt_outlined,
+                        color: _showAllSystemRequests
+                            ? theme.colorScheme.primary
+                            : null,
                       ),
+                      onPressed: () {
+                        setState(() {
+                          _showAllSystemRequests = !_showAllSystemRequests;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            duration: const Duration(seconds: 2),
+                            content: Text(
+                              _showAllSystemRequests
+                                  ? 'Displaying all system requests'
+                                  : 'Displaying requests for ${user.name}',
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-            ],
+                  ],
             bottom: TabBar(
               controller: _tabController,
               isScrollable: false,
@@ -224,34 +241,37 @@ class _HistoryScreenState extends State<HistoryScreen>
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            _showAllSystemRequests
+                            (!user.isWorker && _showAllSystemRequests)
                                 ? 'Showing all requests across accounts'
-                                : 'Showing requests for ${user.email}',
+                                : (user.isWorker
+                                    ? 'Showing assigned & completed jobs for ${user.name} (${user.workerSkill ?? "Worker"})'
+                                    : 'Showing requests for ${user.email}'),
                             style: TextStyle(
                               fontSize: 12,
                               color: theme.colorScheme.outline,
                             ),
                           ),
                         ),
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        if (!user.isWorker)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _showAllSystemRequests = !_showAllSystemRequests;
+                              });
+                            },
+                            child: Text(
+                              _showAllSystemRequests
+                                  ? 'My Account Only'
+                                  : 'Show All History',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _showAllSystemRequests = !_showAllSystemRequests;
-                            });
-                          },
-                          child: Text(
-                            _showAllSystemRequests
-                                ? 'My Account Only'
-                                : 'Show All History',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
                       ],
                     ),
                   ],
@@ -367,7 +387,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
-              if (!_showAllSystemRequests) ...[
+              if (!widget.currentUser.isWorker && !_showAllSystemRequests) ...[
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: () {

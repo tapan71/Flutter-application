@@ -70,10 +70,10 @@ class AuthService extends ChangeNotifier {
       ratingCount: 18,
       completedJobsCount: 24,
     ),
-    AppUser(
+    const AppUser(
       uid: 'demo_worker_pro',
-      email: 'pro.electrician@localserve.com',
-      name: 'Vikram Singh (PRO)',
+      email: 'electrician.vikram@localserve.com',
+      name: 'Vikram Singh',
       mobile: '9822334455',
       address: 'Navrangpura, CG Road, Ahmedabad',
       latitude: 23.0360,
@@ -85,10 +85,6 @@ class AuthService extends ChangeNotifier {
       rating: 5.0,
       ratingCount: 34,
       completedJobsCount: 42,
-      membershipPlan: 'worker_pro_monthly',
-      membershipTier: 'Pro Club',
-      membershipExpiresAt: DateTime.now().add(const Duration(days: 30)),
-      isProMember: true,
     ),
     const AppUser(
       uid: 'demo_worker_2',

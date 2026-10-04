@@ -335,14 +335,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 18),
 
                               // Register Link
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   const Text(
-                                    "Don't have an account?",
+                                    "Don't have an account? ",
                                     style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
                                   ),
                                   TextButton(
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                     onPressed: () {
                                       Navigator.push(
                                         context,
@@ -416,17 +422,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 _DemoUserPill(
-                                  icon: Icons.handyman_rounded,
-                                  label: 'Worker Pro',
+                                  icon: Icons.plumbing_rounded,
+                                  label: 'Worker (Plumbing)',
                                   color: const Color(0xFF059669),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[2],
                                   ),
                                 ),
                                 _DemoUserPill(
-                                  icon: Icons.workspace_premium_rounded,
-                                  label: 'PRO Worker 👑',
-                                  color: const Color(0xFF7C3AED),
+                                  icon: Icons.bolt_rounded,
+                                  label: 'Worker (Electrical)',
+                                  color: const Color(0xFF2563EB),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[3],
                                   ),
