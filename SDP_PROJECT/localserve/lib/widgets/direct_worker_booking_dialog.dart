@@ -4,6 +4,7 @@ import '../models/service_request.dart';
 import '../models/user_model.dart';
 import '../services/database_service.dart';
 import '../widgets/user_profile_dialog.dart';
+import '../widgets/app_image_view.dart';
 
 class DirectWorkerBookingDialog extends StatefulWidget {
   final AppUser worker;
@@ -196,13 +197,9 @@ class _DirectWorkerBookingDialogState extends State<DirectWorkerBookingDialog> {
                     children: [
                       CircleAvatar(
                         radius: 26,
-                        backgroundImage: widget.worker.avatarUrl != null &&
-                                widget.worker.avatarUrl!.isNotEmpty
-                            ? NetworkImage(widget.worker.avatarUrl!)
-                            : null,
-                        onBackgroundImageError: widget.worker.avatarUrl != null ? (error, stackTrace) {} : null,
-                        child: (widget.worker.avatarUrl == null ||
-                                widget.worker.avatarUrl!.isEmpty)
+                        backgroundImage: AppImageView.getProvider(widget.worker.effectiveAvatarUrl),
+                        onBackgroundImageError: (error, stackTrace) {},
+                        child: AppImageView.getProvider(widget.worker.effectiveAvatarUrl) == null
                             ? const Icon(Icons.engineering, size: 28)
                             : null,
                       ),

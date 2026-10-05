@@ -411,7 +411,19 @@ class DatabaseService extends ChangeNotifier {
       StreamController<List<Review>>.broadcast();
 
   List<ServiceRequest> get allRequests => List.unmodifiable(_mockRequests);
-  List<AppUser> get allUsers => List.unmodifiable(_mockUsers);
+  List<AppUser> get allUsers {
+    final map = <String, AppUser>{};
+    for (final u in _defaultUsers) {
+      map[u.uid] = u;
+    }
+    for (final u in _mockUsers) {
+      map[u.uid] = u;
+    }
+    for (final u in _storage.getAllUsers()) {
+      map[u.uid] = u;
+    }
+    return map.values.toList();
+  }
   List<AppUser> getAllUsers() => allUsers;
   Stream<List<AppNotification>> streamUserNotifications(String userId) => streamNotifications(userId);
 
@@ -432,21 +444,22 @@ class DatabaseService extends ChangeNotifier {
     final savedReqs = _storage.getAllRequests();
     if (savedReqs.isEmpty) {
       _mockRequests.addAll(_defaultRequests);
-      for (final r in _defaultRequests) {
-        await _storage.saveRequest(r);
-      }
+      await _storage.saveRequestsBatch(_defaultRequests);
     } else {
       _mockRequests.addAll(savedReqs);
-      // Ensure all default requests (including new demo requests like req_clean_1, req_elec_1) exist
+      final missingReqs = <ServiceRequest>[];
       for (final def in _defaultRequests) {
         final idx = _mockRequests.indexWhere((r) => r.id == def.id);
         if (idx == -1) {
           _mockRequests.add(def);
-          await _storage.saveRequest(def);
+          missingReqs.add(def);
         } else if (_mockRequests[idx].service != def.service && (def.id == 'req_2' || def.id == 'req_3')) {
           _mockRequests[idx] = def;
-          await _storage.saveRequest(def);
+          missingReqs.add(def);
         }
+      }
+      if (missingReqs.isNotEmpty) {
+        await _storage.saveRequestsBatch(missingReqs);
       }
     }
 
@@ -454,16 +467,18 @@ class DatabaseService extends ChangeNotifier {
     final savedUsers = _storage.getAllUsers();
     if (savedUsers.isEmpty) {
       _mockUsers.addAll(_defaultUsers);
-      for (final u in _defaultUsers) {
-        await _storage.saveUser(u);
-      }
+      await _storage.saveUsersBatch(_defaultUsers);
     } else {
       _mockUsers.addAll(savedUsers);
+      final missingUsers = <AppUser>[];
       for (final def in _defaultUsers) {
         if (!_mockUsers.any((u) => u.uid == def.uid)) {
           _mockUsers.add(def);
-          await _storage.saveUser(def);
+          missingUsers.add(def);
         }
+      }
+      if (missingUsers.isNotEmpty) {
+        await _storage.saveUsersBatch(missingUsers);
       }
     }
 
@@ -482,20 +497,22 @@ class DatabaseService extends ChangeNotifier {
     final savedRevs = _storage.getAllReviews();
     if (savedRevs.isEmpty) {
       _mockReviews.addAll(_defaultReviews);
-      for (final rev in _defaultReviews) {
-        await _storage.saveReview(rev);
-      }
+      await _storage.saveReviewsBatch(_defaultReviews);
     } else {
       _mockReviews.addAll(savedRevs);
+      final missingReviews = <Review>[];
       for (final def in _defaultReviews) {
         final idx = _mockReviews.indexWhere((r) => r.id == def.id);
         if (idx == -1) {
           _mockReviews.add(def);
-          await _storage.saveReview(def);
+          missingReviews.add(def);
         } else if (_mockReviews[idx].service != def.service && (def.id == 'rev_1' || def.id == 'rev_2')) {
           _mockReviews[idx] = def;
-          await _storage.saveReview(def);
+          missingReviews.add(def);
         }
+      }
+      if (missingReviews.isNotEmpty) {
+        await _storage.saveReviewsBatch(missingReviews);
       }
     }
 
@@ -1547,9 +1564,10 @@ class DatabaseService extends ChangeNotifier {
     double? longitude,
     String? workerSkill,
     String? bio,
+    String? avatarUrl,
   }) async {
     if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      final Map<String, dynamic> firestoreMap = {
         'name': name,
         'mobile': mobile,
         'address': address,
@@ -1557,7 +1575,11 @@ class DatabaseService extends ChangeNotifier {
         'longitude': longitude,
         'workerSkill': workerSkill,
         'bio': bio,
-      });
+      };
+      if (avatarUrl != null) {
+        firestoreMap['avatarUrl'] = avatarUrl;
+      }
+      await FirebaseFirestore.instance.collection('users').doc(uid).update(firestoreMap);
     }
 
     final index = _mockUsers.indexWhere((u) => u.uid == uid);
@@ -1570,6 +1592,7 @@ class DatabaseService extends ChangeNotifier {
         longitude: longitude,
         workerSkill: workerSkill,
         bio: bio,
+        avatarUrl: avatarUrl ?? _mockUsers[index].avatarUrl,
       );
       _mockUsers[index] = updated;
       await _storage.saveUser(updated);

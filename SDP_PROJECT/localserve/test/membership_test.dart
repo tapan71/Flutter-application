@@ -33,20 +33,8 @@ void main() {
       expect(gold.serviceDiscountPercent, 20.0);
     });
 
-    test('Worker plans define Pro Club and Elite Partner correctly', () {
-      expect(MembershipPlan.workerPlans.length, 2);
-
-      final pro = MembershipPlan.workerPlans.first;
-      expect(pro.id, 'worker_pro_monthly');
-      expect(pro.role, UserRole.worker);
-      expect(pro.price, 299.0);
-      expect(pro.durationDays, 30);
-
-      final elite = MembershipPlan.workerPlans.last;
-      expect(elite.id, 'worker_elite_yearly');
-      expect(elite.role, UserRole.worker);
-      expect(elite.price, 1499.0);
-      expect(elite.durationDays, 365);
+    test('Worker plans are empty as workers have 0 platform fees', () {
+      expect(MembershipPlan.workerPlans.length, 0);
     });
 
     test('MembershipPlan.findById retrieves plans correctly', () {
@@ -110,7 +98,7 @@ void main() {
       expect(expiredCustomer.isCustomerMember, false);
     });
 
-    test('Worker with isProMember or active Pro plan returns isWorkerPro true', () {
+    test('Worker membership badge label returns Verified Specialist', () {
       const proWorker = AppUser(
         uid: 'worker_pro_1',
         email: 'pro@localserve.com',
@@ -118,13 +106,10 @@ void main() {
         mobile: '9123456780',
         role: UserRole.worker,
         workerSkill: 'Plumbing',
-        isProMember: true,
-        membershipTier: 'PRO WORKER',
       );
 
-      expect(proWorker.hasActiveMembership, true);
-      expect(proWorker.isWorkerPro, true);
-      expect(proWorker.membershipBadgeLabel, 'PRO WORKER');
+      expect(proWorker.isWorker, true);
+      expect(proWorker.membershipBadgeLabel, 'Verified Specialist');
     });
 
     test('AppUser serialization toMap and fromMap preserves membership fields', () {
@@ -160,7 +145,7 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 60));
     });
 
-    test('getWorkersForCategory ranks PRO workers first in search results', () {
+    test('getWorkersForCategory ranks workers in search results', () {
       final plumbingWorkers = dbService.getWorkersForCategory(
         'Plumbing',
         customerLat: 23.0225,
@@ -168,8 +153,6 @@ void main() {
       );
 
       expect(plumbingWorkers.isNotEmpty, true);
-      // First worker in the list should be the PRO worker (Alex Plumber)
-      expect(plumbingWorkers.first.isWorkerPro, true);
       expect(plumbingWorkers.first.name, 'Alex Plumber');
     });
 

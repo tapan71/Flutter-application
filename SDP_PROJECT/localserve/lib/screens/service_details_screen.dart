@@ -242,11 +242,9 @@ class ServiceDetailsScreen extends StatelessWidget {
                                       CircleAvatar(
                                         radius: 26,
                                         backgroundColor: theme.colorScheme.primaryContainer,
-                                        backgroundImage: worker?.avatarUrl != null
-                                            ? NetworkImage(worker!.avatarUrl!)
-                                            : null,
-                                        onBackgroundImageError: worker?.avatarUrl != null ? (error, stackTrace) {} : null,
-                                        child: worker?.avatarUrl == null
+                                        backgroundImage: AppImageView.getProvider(worker?.effectiveAvatarUrl),
+                                        onBackgroundImageError: (error, stackTrace) {},
+                                        child: AppImageView.getProvider(worker?.effectiveAvatarUrl) == null
                                             ? Text(
                                                 worker != null && worker.name.isNotEmpty
                                                     ? worker.name[0].toUpperCase()
@@ -780,7 +778,7 @@ class ServiceDetailsScreen extends StatelessWidget {
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: currentReq.images.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          separatorBuilder: (context, index) => const SizedBox(width: 12),
                           itemBuilder: (ctx, idx) {
                             final imgUrl = currentReq.images[idx];
                             return GestureDetector(
@@ -1895,7 +1893,7 @@ class ServiceDetailsScreen extends StatelessWidget {
                                   child: AppImageView(
                                     imageUrl: images[pageIndex],
                                     fit: BoxFit.contain,
-                                    errorBuilder: (_, __, ___) => const Center(
+                                    errorBuilder: (context, error, stackTrace) => const Center(
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [

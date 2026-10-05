@@ -44,6 +44,8 @@ class AppUser {
   final DateTime? membershipExpiresAt;
   final bool isProMember;
 
+  static const String defaultAvatarUrl = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+
   const AppUser({
     required this.uid,
     required this.email,
@@ -66,6 +68,13 @@ class AppUser {
     this.membershipExpiresAt,
     this.isProMember = false,
   });
+
+  String get effectiveAvatarUrl {
+    if (avatarUrl != null && avatarUrl!.trim().isNotEmpty) {
+      return avatarUrl!.trim();
+    }
+    return defaultAvatarUrl;
+  }
 
   bool get isCustomer => role == UserRole.customer;
   bool get isWorker => role == UserRole.worker;

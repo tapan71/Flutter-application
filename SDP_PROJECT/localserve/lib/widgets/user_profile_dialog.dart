@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../models/review_model.dart';
 import '../services/database_service.dart';
+import '../services/theme_service.dart';
+import 'app_image_view.dart';
 import 'edit_profile_dialog.dart';
 import '../screens/membership_screen.dart';
 
@@ -86,11 +88,9 @@ class UserProfileDialog extends StatelessWidget {
                           CircleAvatar(
                             radius: 46,
                             backgroundColor: theme.colorScheme.primaryContainer,
-                            backgroundImage: user.avatarUrl != null
-                                ? NetworkImage(user.avatarUrl!)
-                                : null,
-                            onBackgroundImageError: user.avatarUrl != null ? (error, stackTrace) {} : null,
-                            child: user.avatarUrl == null
+                            backgroundImage: AppImageView.getProvider(user.effectiveAvatarUrl),
+                            onBackgroundImageError: (error, stackTrace) {},
+                            child: AppImageView.getProvider(user.effectiveAvatarUrl) == null
                                 ? Text(
                                     user.name.isNotEmpty
                                         ? user.name[0].toUpperCase()
@@ -207,16 +207,16 @@ class UserProfileDialog extends StatelessWidget {
                           if (!user.isWorker) ...[
                             const SizedBox(height: 14),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                               decoration: BoxDecoration(
                                 color: user.hasActiveMembership
-                                    ? Colors.blue.shade50
-                                    : Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
+                                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+                                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: user.hasActiveMembership
-                                      ? Colors.blue.shade300
-                                      : Colors.grey.shade300,
+                                      ? theme.colorScheme.primary.withValues(alpha: 0.6)
+                                      : theme.colorScheme.outline.withValues(alpha: 0.4),
                                 ),
                               ),
                               child: Row(
@@ -226,11 +226,11 @@ class UserProfileDialog extends StatelessWidget {
                                         ? Icons.workspace_premium
                                         : Icons.stars_outlined,
                                     color: user.hasActiveMembership
-                                        ? const Color(0xFF1E88E5)
-                                        : Colors.grey.shade700,
-                                    size: 22,
+                                        ? const Color(0xFF3B82F6)
+                                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    size: 24,
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,10 +238,11 @@ class UserProfileDialog extends StatelessWidget {
                                         Text(
                                           user.hasActiveMembership
                                               ? 'Plan: ${user.membershipTier ?? "Active Plan"}'
-                                              : 'Free Plan Account',
-                                          style: const TextStyle(
+                                              : 'Free Standard Account',
+                                          style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13,
+                                            color: theme.colorScheme.onSurface,
                                           ),
                                         ),
                                         Text(
@@ -250,7 +251,7 @@ class UserProfileDialog extends StatelessWidget {
                                               : 'Upgrade to unlock zero inspection fees & perks',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.grey.shade700,
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                                           ),
                                         ),
                                       ],
@@ -259,7 +260,7 @@ class UserProfileDialog extends StatelessWidget {
                                   if (showEditProfileButton)
                                     TextButton(
                                       style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
                                         visualDensity: VisualDensity.compact,
                                       ),
                                       onPressed: () {
@@ -275,7 +276,7 @@ class UserProfileDialog extends StatelessWidget {
                                         user.hasActiveMembership ? 'Manage' : 'Upgrade',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1E88E5),
+                                          color: Color(0xFF3B82F6),
                                         ),
                                       ),
                                     ),
@@ -284,9 +285,92 @@ class UserProfileDialog extends StatelessWidget {
                             ),
                           ],
 
+                          // Theme & Appearance Switcher (Dark Mode / Light Mode / System Mode)
+                          if (showEditProfileButton) ...[
+                            const SizedBox(height: 14),
+                            Consumer<ThemeService>(
+                              builder: (context, themeService, _) {
+                                final currentMode = themeService.themeMode;
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: theme.colorScheme.outline.withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.palette_outlined,
+                                            size: 16,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Appearance & Mode',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: theme.colorScheme.onSurface,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          // 🌙 Dark (Default)
+                                          Expanded(
+                                            child: _buildThemeSegmentButton(
+                                              context: context,
+                                              label: 'Dark',
+                                              icon: Icons.dark_mode_rounded,
+                                              isSelected: currentMode == ThemeMode.dark,
+                                              accentColor: const Color(0xFF60A5FA),
+                                              onTap: () => themeService.setThemeMode(ThemeMode.dark),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // ☀️ Light
+                                          Expanded(
+                                            child: _buildThemeSegmentButton(
+                                              context: context,
+                                              label: 'Light',
+                                              icon: Icons.light_mode_rounded,
+                                              isSelected: currentMode == ThemeMode.light,
+                                              accentColor: const Color(0xFFF59E0B),
+                                              onTap: () => themeService.setThemeMode(ThemeMode.light),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // ⚙️ Auto
+                                          Expanded(
+                                            child: _buildThemeSegmentButton(
+                                              context: context,
+                                              label: 'Auto',
+                                              icon: Icons.brightness_auto_rounded,
+                                              isSelected: currentMode == ThemeMode.system,
+                                              accentColor: const Color(0xFF10B981),
+                                              onTap: () => themeService.setThemeMode(ThemeMode.system),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+
                           // Prominent Edit Profile button for customer/worker viewing own profile
                           if (showEditProfileButton) ...[
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 14),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
@@ -533,6 +617,61 @@ class UserProfileDialog extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildThemeSegmentButton({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                : theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline.withValues(alpha: 0.4),
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected ? theme.colorScheme.primary : accentColor,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

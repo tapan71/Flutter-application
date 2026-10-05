@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/theme_mode_toggle_button.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -49,9 +50,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
           // Ambient Decorative Glow
@@ -100,6 +102,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Top Row with Theme Mode Selector
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: const [
+                          ThemeModeToggleButton(),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
                       // Brand Logo & Header
                       Container(
                         height: 72,
@@ -131,22 +142,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
+                          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFDBEAFE)),
+                          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.bolt, size: 14, color: Color(0xFF2563EB)),
-                            SizedBox(width: 4),
+                            Icon(Icons.bolt, size: 14, color: theme.colorScheme.primary),
+                            const SizedBox(width: 4),
                             Text(
                               'LOCALSERVE ON-DEMAND',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.6,
-                                color: Color(0xFF1D4ED8),
+                                color: theme.colorScheme.primary,
                               ),
                             ),
                           ],
@@ -154,23 +165,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      const Text(
+                      Text(
                         'Welcome Back',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.6,
-                          color: Color(0xFF0F172A),
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'Sign in to manage & request verified local services',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF64748B),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                           height: 1.4,
                         ),
                       ),
@@ -180,12 +191,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: theme.colorScheme.surface,
                           borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.6),
+                            width: 1.2,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 24,
                               offset: const Offset(0, 8),
                             ),
@@ -378,23 +392,25 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9).withValues(alpha: 0.7),
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                          ),
                         ),
                         child: Column(
                           children: [
-                            const Row(
+                            Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFD97706)),
-                                SizedBox(width: 6),
+                                const Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFD97706)),
+                                const SizedBox(width: 6),
                                 Text(
                                   'One-Click Demo Accounts',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF334155),
+                                    color: theme.colorScheme.onSurface,
                                   ),
                                 ),
                               ],
@@ -408,7 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _DemoUserPill(
                                   icon: Icons.person_rounded,
                                   label: 'Customer',
-                                  color: const Color(0xFF2563EB),
+                                  color: const Color(0xFF3B82F6),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[0],
                                   ),
@@ -416,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _DemoUserPill(
                                   icon: Icons.stars_rounded,
                                   label: 'Plus Customer ⭐',
-                                  color: const Color(0xFFD97706),
+                                  color: const Color(0xFFF59E0B),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[1],
                                   ),
@@ -424,7 +440,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _DemoUserPill(
                                   icon: Icons.plumbing_rounded,
                                   label: 'Worker (Plumbing)',
-                                  color: const Color(0xFF059669),
+                                  color: const Color(0xFF10B981),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[2],
                                   ),
@@ -432,7 +448,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _DemoUserPill(
                                   icon: Icons.bolt_rounded,
                                   label: 'Worker (Electrical)',
-                                  color: const Color(0xFF2563EB),
+                                  color: const Color(0xFF6366F1),
                                   onTap: () => authService.signInWithDemoUser(
                                     AuthService.demoUsers[3],
                                   ),
@@ -469,11 +485,12 @@ class _DemoUserPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Material(
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       borderRadius: BorderRadius.circular(12),
       elevation: 1,
-      shadowColor: Colors.black.withValues(alpha: 0.08),
+      shadowColor: Colors.black.withValues(alpha: 0.1),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -481,7 +498,10 @@ class _DemoUserPill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.25), width: 1.2),
+            border: Border.all(
+              color: color.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -493,7 +513,7 @@ class _DemoUserPill extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: color.withValues(alpha: 0.9),
+                  color: color,
                 ),
               ),
             ],

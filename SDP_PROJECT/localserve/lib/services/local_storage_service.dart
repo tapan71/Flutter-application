@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -9,8 +10,8 @@ import '../models/notification_model.dart';
 import '../models/review_model.dart';
 
 /// Rock-solid cross-platform local persistent storage for LocalServe.
-/// Uses SharedPreferences and disk file storage to guarantee data is NEVER lost
-/// across app restarts, re-runs on Android phones, Web browser refreshes, or Desktop.
+/// Uses SharedPreferences, backup user storage, and atomic disk file storage to guarantee
+/// data is NEVER lost across app restarts, re-runs on Android phones, Web browser refreshes, or Desktop.
 class LocalStorageService {
   static final LocalStorageService _instance = LocalStorageService._internal();
   factory LocalStorageService() => _instance;
@@ -21,9 +22,13 @@ class LocalStorageService {
   SharedPreferences? _prefs;
 
   static const String _prefsStorageKey = 'localserve_persistent_store_v1';
+  static const String _prefsUsersBackupKey = 'localserve_users_backup_v1';
+  static const String _prefsActiveUserKey = 'localserve_active_user_id';
+  static const String _prefsThemeKey = 'localserve_theme_mode';
 
   // In-memory cache synced with disk and SharedPreferences
   String? _activeUserId;
+  String _themeMode = 'dark'; // 'dark', 'light', 'system' - default is dark
   final Map<String, AppUser> _users = {};
   final Map<String, String> _passwords = {};
   final Map<String, ServiceRequest> _requests = {};
@@ -32,6 +37,7 @@ class LocalStorageService {
 
   bool get isInitialized => _initialized;
   String? get activeUserId => _activeUserId;
+  String get themeMode => _themeMode;
 
   bool get _isTestEnv {
     if (kIsWeb) return false;
@@ -49,7 +55,7 @@ class LocalStorageService {
       if (!kIsWeb && !_isTestEnv) {
         await _resolveStoragePath();
       }
-      
+
       if (!_isTestEnv) {
         try {
           _prefs = await SharedPreferences.getInstance();
@@ -133,80 +139,142 @@ class LocalStorageService {
     }
   }
 
+  void _parseDataMap(Map<dynamic, dynamic> data) {
+    if (data['activeUserId'] != null) {
+      _activeUserId = data['activeUserId'].toString();
+    }
+    if (data['themeMode'] != null) {
+      _themeMode = data['themeMode'].toString();
+    }
+
+    if (data['users'] is List) {
+      for (final u in data['users'] as List) {
+        if (u is Map) {
+          try {
+            final user = AppUser.fromMap(Map<String, dynamic>.from(u));
+            if (user.uid.isNotEmpty) {
+              _users[user.uid] = user;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (data['passwords'] is Map) {
+      (data['passwords'] as Map).forEach((k, v) {
+        if (k != null && v != null) {
+          _passwords[k.toString().trim().toLowerCase()] = v.toString();
+        }
+      });
+    }
+
+    if (data['requests'] is List) {
+      for (final r in data['requests'] as List) {
+        if (r is Map) {
+          try {
+            final req = ServiceRequest.fromMap(Map<String, dynamic>.from(r));
+            if (req.id.isNotEmpty) {
+              _requests[req.id] = req;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (data['notifications'] is List) {
+      for (final n in data['notifications'] as List) {
+        if (n is Map) {
+          try {
+            final notif = AppNotification.fromMap(Map<String, dynamic>.from(n));
+            if (!_notifications.any((existing) => existing.id == notif.id)) {
+              _notifications.add(notif);
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (data['reviews'] is List) {
+      for (final rev in data['reviews'] as List) {
+        if (rev is Map) {
+          try {
+            final review = Review.fromMap(Map<String, dynamic>.from(rev));
+            if (!_reviews.any((existing) => existing.id == review.id)) {
+              _reviews.add(review);
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
   Future<void> _loadFromDisk() async {
     try {
       if (!_isTestEnv) {
         await _ensurePrefs();
       }
-      String? jsonRaw;
 
-      // 1. First try SharedPreferences (works universally on Web, Android, iOS, Windows)
+      // 1. Load from SharedPreferences
       if (_prefs != null) {
-        jsonRaw = _prefs!.getString(_prefsStorageKey);
+        final activePref = _prefs!.getString(_prefsActiveUserKey);
+        if (activePref != null && activePref.isNotEmpty) {
+          _activeUserId = activePref;
+        }
+        final themePref = _prefs!.getString(_prefsThemeKey);
+        if (themePref != null && themePref.isNotEmpty) {
+          _themeMode = themePref;
+        }
+
+        final jsonRaw = _prefs!.getString(_prefsStorageKey);
+        if (jsonRaw != null && jsonRaw.trim().isNotEmpty) {
+          try {
+            final decoded = jsonDecode(jsonRaw);
+            if (decoded is Map) {
+              _parseDataMap(decoded);
+            }
+          } catch (e) {
+            debugPrint('Error parsing SharedPreferences store: $e');
+          }
+        }
+
+        // Check backup users store in SharedPreferences
+        final usersBackupRaw = _prefs!.getString(_prefsUsersBackupKey);
+        if (usersBackupRaw != null && usersBackupRaw.trim().isNotEmpty) {
+          try {
+            final usersList = jsonDecode(usersBackupRaw);
+            if (usersList is List) {
+              for (final u in usersList) {
+                if (u is Map) {
+                  final user = AppUser.fromMap(Map<String, dynamic>.from(u));
+                  if (user.uid.isNotEmpty && !_users.containsKey(user.uid)) {
+                    _users[user.uid] = user;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
       }
 
-      // 2. If not in SharedPreferences or empty, check disk file
-      if (!kIsWeb && (jsonRaw == null || jsonRaw.trim().isEmpty) && _storagePath != null) {
+      // 2. Load from Disk File and merge
+      if (!kIsWeb && _storagePath != null) {
         final file = File(_storagePath!);
         if (await file.exists()) {
-          jsonRaw = await file.readAsString();
-        }
-      }
-
-      if (jsonRaw == null || jsonRaw.trim().isEmpty) return;
-
-      final data = jsonDecode(jsonRaw) as Map<String, dynamic>;
-
-      _activeUserId = data['activeUserId'] as String?;
-
-      if (data['users'] is List) {
-        for (final u in data['users'] as List) {
-          if (u is Map<String, dynamic>) {
-            final user = AppUser.fromMap(u);
-            if (user.uid.isNotEmpty) {
-              _users[user.uid] = user;
+          try {
+            final fileRaw = await file.readAsString();
+            if (fileRaw.trim().isNotEmpty) {
+              final decoded = jsonDecode(fileRaw);
+              if (decoded is Map) {
+                _parseDataMap(decoded);
+              }
             }
+          } catch (e) {
+            debugPrint('Error reading disk file store: $e');
           }
         }
       }
 
-      if (data['passwords'] is Map) {
-        (data['passwords'] as Map).forEach((k, v) {
-          _passwords[k.toString().toLowerCase()] = v.toString();
-        });
-      }
-
-      if (data['requests'] is List) {
-        for (final r in data['requests'] as List) {
-          if (r is Map<String, dynamic>) {
-            final req = ServiceRequest.fromMap(r);
-            if (req.id.isNotEmpty) {
-              _requests[req.id] = req;
-            }
-          }
-        }
-      }
-
-      if (data['notifications'] is List) {
-        _notifications.clear();
-        for (final n in data['notifications'] as List) {
-          if (n is Map<String, dynamic>) {
-            _notifications.add(AppNotification.fromMap(n));
-          }
-        }
-      }
-
-      if (data['reviews'] is List) {
-        _reviews.clear();
-        for (final rev in data['reviews'] as List) {
-          if (rev is Map<String, dynamic>) {
-            _reviews.add(Review.fromMap(rev));
-          }
-        }
-      }
-
-      // Enforce data integrity: A specialized worker like Alex Plumber (demo_worker_1)
-      // must strictly have Plumbing requests and Plumbing reviews, never other work like Cleaning.
+      // Enforce data integrity: specialized worker Alex Plumber has Plumbing requests & reviews
       bool needsFlush = false;
       if (_requests.containsKey('req_2')) {
         final r = _requests['req_2']!;
@@ -271,10 +339,34 @@ class LocalStorageService {
     }
   }
 
+  // Non-blocking coalescing lock for sequential atomic disk flushes
+  bool _isFlushing = false;
+  bool _needsAnotherFlush = false;
+
   Future<void> _flushToDisk() async {
+    if (_isTestEnv) return;
+
+    if (_isFlushing) {
+      _needsAnotherFlush = true;
+      return;
+    }
+
+    _isFlushing = true;
+    try {
+      do {
+        _needsAnotherFlush = false;
+        await _executeFlush();
+      } while (_needsAnotherFlush);
+    } finally {
+      _isFlushing = false;
+    }
+  }
+
+  Future<void> _executeFlush() async {
     try {
       final data = {
         'activeUserId': _activeUserId,
+        'themeMode': _themeMode,
         'users': _users.values.map((u) => u.toMap()).toList(),
         'passwords': _passwords,
         'requests': _requests.values.map((r) => r.toMap()).toList(),
@@ -283,22 +375,48 @@ class LocalStorageService {
       };
 
       final encoded = jsonEncode(data);
+      final usersEncoded = jsonEncode(_users.values.map((u) => u.toMap()).toList());
 
       await _ensurePrefs();
 
-      // Save to SharedPreferences
+      // 1. Save to SharedPreferences
       if (_prefs != null) {
         await _prefs!.setString(_prefsStorageKey, encoded);
+        await _prefs!.setString(_prefsUsersBackupKey, usersEncoded);
+        if (_activeUserId != null) {
+          await _prefs!.setString(_prefsActiveUserKey, _activeUserId!);
+        } else {
+          await _prefs!.remove(_prefsActiveUserKey);
+        }
+        await _prefs!.setString(_prefsThemeKey, _themeMode);
       }
 
-      // Save to File on Desktop / Mobile
+      // 2. Save atomically to File on Desktop / Mobile
       if (_storagePath != null) {
         final file = File(_storagePath!);
-        await file.writeAsString(encoded, flush: true);
+        final tmpFile = File('${_storagePath!}.tmp');
+        await tmpFile.writeAsString(encoded, flush: true);
+        if (await tmpFile.exists()) {
+          try {
+            await tmpFile.rename(_storagePath!);
+          } catch (_) {
+            // Fallback for systems where rename over existing file requires direct write
+            await file.writeAsString(encoded, flush: true);
+            if (await tmpFile.exists()) {
+              await tmpFile.delete();
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error flushing persistent storage: $e');
     }
+  }
+
+  // --- Theme Mode ---
+  Future<void> setThemeMode(String mode) async {
+    _themeMode = mode;
+    await _flushToDisk();
   }
 
   // --- Active Session Management ---
@@ -315,7 +433,7 @@ class LocalStorageService {
   AppUser? getUserByEmail(String email) {
     final norm = email.trim().toLowerCase();
     for (final u in _users.values) {
-      if (u.email.toLowerCase() == norm) return u;
+      if (u.email.trim().toLowerCase() == norm) return u;
     }
     return null;
   }
@@ -330,6 +448,19 @@ class LocalStorageService {
     await _flushToDisk();
   }
 
+  // Batch save to avoid triggering 20 separate disk writes in loops
+  Future<void> saveUsersBatch(List<AppUser> usersList, {Map<String, String>? passwordsMap}) async {
+    for (final u in usersList) {
+      _users[u.uid] = u;
+    }
+    if (passwordsMap != null) {
+      passwordsMap.forEach((email, pass) {
+        _passwords[email.trim().toLowerCase()] = pass;
+      });
+    }
+    await _flushToDisk();
+  }
+
   // --- Service Requests ---
   List<ServiceRequest> getAllRequests() => _requests.values.toList();
 
@@ -337,6 +468,13 @@ class LocalStorageService {
 
   Future<void> saveRequest(ServiceRequest request) async {
     _requests[request.id] = request;
+    await _flushToDisk();
+  }
+
+  Future<void> saveRequestsBatch(List<ServiceRequest> reqs) async {
+    for (final r in reqs) {
+      _requests[r.id] = r;
+    }
     await _flushToDisk();
   }
 
@@ -379,4 +517,17 @@ class LocalStorageService {
     }
     await _flushToDisk();
   }
+
+  Future<void> saveReviewsBatch(List<Review> revs) async {
+    for (final rev in revs) {
+      final idx = _reviews.indexWhere((r) => r.id == rev.id);
+      if (idx != -1) {
+        _reviews[idx] = rev;
+      } else {
+        _reviews.insert(0, rev);
+      }
+    }
+    await _flushToDisk();
+  }
 }
+

@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import '../services/geocoding_service.dart';
+import 'app_image_view.dart';
 import 'location_picker_screen.dart';
 
 class EditProfileDialog extends StatefulWidget {
@@ -35,6 +38,8 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
   String? _workerSkill;
   bool _isDetectingLocation = false;
   bool _isSaving = false;
+  String? _avatarBase64;
+  final ImagePicker _imagePicker = ImagePicker();
 
   final List<String> _skills = [
     'Plumbing',
@@ -56,6 +61,113 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
     _latitude = widget.user.latitude;
     _longitude = widget.user.longitude;
     _workerSkill = widget.user.workerSkill ?? (widget.user.isWorker ? 'Plumbing' : null);
+    _avatarBase64 = widget.user.avatarUrl;
+  }
+
+  Future<void> _pickAvatarImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final base64String = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        if (mounted) {
+          setState(() {
+            _avatarBase64 = base64String;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking profile image: $e');
+    }
+  }
+
+  void _showPhotoSourceBottomSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Update Profile Photo',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.shade50,
+                    child: const Icon(Icons.camera_alt_rounded, color: Colors.blue),
+                  ),
+                  title: const Text('Take a Photo (Camera)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Capture photo directly with camera'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAvatarImage(ImageSource.camera);
+                  },
+                ),
+                const Divider(height: 8),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.purple.shade50,
+                    child: const Icon(Icons.photo_library_rounded, color: Colors.purple),
+                  ),
+                  title: const Text('Phone Storage / Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Choose a picture from device storage'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAvatarImage(ImageSource.gallery);
+                  },
+                ),
+                if (_avatarBase64 != null) ...[
+                  const Divider(height: 8),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.red.shade50,
+                      child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                    ),
+                    title: const Text('Reset to Default Avatar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _avatarBase64 = AppUser.defaultAvatarUrl;
+                      });
+                    },
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -134,6 +246,7 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
         longitude: _longitude,
         workerSkill: widget.user.isWorker ? _workerSkill : null,
         bio: widget.user.isWorker ? bio : null,
+        avatarUrl: _avatarBase64 ?? widget.user.avatarUrl,
       );
 
       await dbService.updateUserProfile(
@@ -145,13 +258,14 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
         longitude: _longitude,
         workerSkill: widget.user.isWorker ? _workerSkill : null,
         bio: widget.user.isWorker ? bio : null,
+        avatarUrl: _avatarBase64 ?? widget.user.avatarUrl,
       );
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Profile updated! Mobile number and address saved permanently.'),
+            content: Text('✅ Profile updated! Changes saved permanently.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -193,11 +307,69 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Profile Avatar with Photo Picker (Storage / Camera)
+                Center(
+                  child: Column(
+                    children: [
+                      Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: _showPhotoSourceBottomSheet,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: theme.colorScheme.primary,
+                                  width: 2,
+                                ),
+                              ),
+                              child: CircleAvatar(
+                                radius: 36,
+                                backgroundColor: theme.colorScheme.primaryContainer,
+                                backgroundImage: AppImageView.getProvider(_avatarBase64 ?? widget.user.effectiveAvatarUrl),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: _showPhotoSourceBottomSheet,
+                              child: Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: theme.colorScheme.surface, width: 1.5),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      TextButton.icon(
+                        onPressed: _showPhotoSourceBottomSheet,
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        icon: const Icon(Icons.photo_camera, size: 14),
+                        label: const Text('Change Photo (Phone / Camera)', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
                 const Text(
-                  'Update your registered mobile number and address. Changes are saved permanently.',
+                  'Update your registered details. Changes are saved permanently.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Name
                 TextFormField(

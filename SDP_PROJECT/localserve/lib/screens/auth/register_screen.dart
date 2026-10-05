@@ -1,9 +1,13 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/geocoding_service.dart';
+import '../../widgets/app_image_view.dart';
 import '../../widgets/location_picker_screen.dart';
+import '../../widgets/theme_mode_toggle_button.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -29,6 +33,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   double? _selectedLongitude;
   bool _isDetectingLocation = false;
 
+  String? _avatarBase64;
+  final ImagePicker _imagePicker = ImagePicker();
+
   final List<String> _serviceCategories = [
     'Plumbing',
     'Electrical',
@@ -47,6 +54,131 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _detectAndSetLocation(showFeedback: false);
       }
     });
+  }
+
+  Future<void> _pickAvatarImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final base64String = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        if (mounted) {
+          setState(() {
+            _avatarBase64 = base64String;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking profile image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showPhotoSourceBottomSheet() {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Profile Photo (Optional)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add a profile picture via Phone Storage or Camera (not mandatory). Default avatar is used if skipped.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.shade50,
+                    child: const Icon(Icons.camera_alt_rounded, color: Colors.blue),
+                  ),
+                  title: const Text('Take a Photo (Camera)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Capture photo directly with your camera'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAvatarImage(ImageSource.camera);
+                  },
+                ),
+                const Divider(height: 8),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.purple.shade50,
+                    child: const Icon(Icons.photo_library_rounded, color: Colors.purple),
+                  ),
+                  title: const Text('Phone Storage / Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Choose a picture from your device storage'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAvatarImage(ImageSource.gallery);
+                  },
+                ),
+                if (_avatarBase64 != null) ...[
+                  const Divider(height: 8),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.red.shade50,
+                      child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                    ),
+                    title: const Text('Remove & Use Default Photo', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Reset back to standard default profile avatar'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _avatarBase64 = null;
+                      });
+                    },
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _detectAndSetLocation({bool showFeedback = true}) async {
@@ -151,6 +283,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     final authService = context.read<AuthService>();
     try {
+      final effectiveAvatar = (_avatarBase64 != null && _avatarBase64!.trim().isNotEmpty)
+          ? _avatarBase64!.trim()
+          : AppUser.defaultAvatarUrl;
+
       await authService.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -161,15 +297,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         longitude: _selectedLongitude,
         role: _selectedRole,
         workerSkill: _selectedRole == UserRole.worker ? _workerSkill : null,
+        avatarUrl: effectiveAvatar,
       );
 
       if (mounted) {
-        // Show completion confirmation dialog showing registered address & phone number
+        // Show completion confirmation dialog showing registered photo, address & phone number
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
           builder: (dialogCtx) => AlertDialog(
-            icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+            icon: CircleAvatar(
+              radius: 28,
+              backgroundColor: Colors.transparent,
+              backgroundImage: AppImageView.getProvider(effectiveAvatar),
+            ),
             title: const Text('Registration Complete'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -249,13 +390,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('Create an Account'),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
+        actions: const [
+          ThemeModeToggleButton(compact: true),
+        ],
       ),
       body: Stack(
         children: [
@@ -270,7 +412,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    const Color(0xFF3B82F6).withValues(alpha: 0.14),
+                    theme.colorScheme.primary.withValues(alpha: 0.14),
                     Colors.transparent,
                   ],
                 ),
@@ -290,12 +432,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: theme.colorScheme.surface,
                           borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.6),
+                            width: 1.2,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 24,
                               offset: const Offset(0, 8),
                             ),
@@ -311,22 +456,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFEFF6FF),
+                                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                                   ),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.person_add_alt_1_rounded, size: 14, color: Color(0xFF2563EB)),
-                                      SizedBox(width: 4),
+                                      Icon(Icons.person_add_alt_1_rounded, size: 14, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 4),
                                       Text(
                                         'GET STARTED',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w800,
                                           letterSpacing: 0.6,
-                                          color: Color(0xFF1D4ED8),
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                                     ],
@@ -334,26 +479,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                               ),
                               const SizedBox(height: 10),
-                              const Text(
+                              Text(
                                 'Create LocalServe Account',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.5,
-                                  color: Color(0xFF0F172A),
+                                  color: theme.colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
+                              Text(
                                 'Select your role and start booking or offering verified services',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Color(0xFF64748B),
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 ),
                               ),
-                              const SizedBox(height: 22),
+                              const SizedBox(height: 20),
 
                               if (_errorMessage != null) ...[
                                 Container(
@@ -445,6 +590,173 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 const SizedBox(height: 18),
                               ],
+
+                              // Profile Photo Selector (Optional via Phone Storage or Camera)
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outline.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Stack(
+                                          children: [
+                                            GestureDetector(
+                                              onTap: _showPhotoSourceBottomSheet,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(2),
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: _avatarBase64 != null
+                                                        ? theme.colorScheme.primary
+                                                        : theme.colorScheme.outline.withValues(alpha: 0.5),
+                                                    width: 2,
+                                                  ),
+                                                ),
+                                                child: CircleAvatar(
+                                                  radius: 32,
+                                                  backgroundColor: theme.colorScheme.primaryContainer,
+                                                  backgroundImage: AppImageView.getProvider(_avatarBase64 ?? AppUser.defaultAvatarUrl),
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              bottom: 0,
+                                              right: 0,
+                                              child: GestureDetector(
+                                                onTap: _showPhotoSourceBottomSheet,
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(5),
+                                                  decoration: BoxDecoration(
+                                                    color: theme.colorScheme.primary,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(color: theme.colorScheme.surface, width: 1.5),
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.camera_alt_rounded,
+                                                    size: 13,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    'Profile Photo',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 13,
+                                                      color: theme.colorScheme.onSurface,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.grey.withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text(
+                                                      'Optional',
+                                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                _avatarBase64 != null
+                                                    ? 'Custom photo selected'
+                                                    : 'Default profile image is used by default',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _avatarBase64 != null ? Colors.green : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                                  fontWeight: _avatarBase64 != null ? FontWeight.w600 : FontWeight.normal,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Wrap(
+                                                spacing: 8,
+                                                children: [
+                                                  InkWell(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    onTap: _showPhotoSourceBottomSheet,
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            _avatarBase64 != null ? Icons.edit_rounded : Icons.add_photo_alternate_rounded,
+                                                            size: 14,
+                                                            color: theme.colorScheme.primary,
+                                                          ),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            _avatarBase64 != null ? 'Change photo' : 'Upload photo',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: theme.colorScheme.primary,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (_avatarBase64 != null)
+                                                    InkWell(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      onTap: () {
+                                                        setState(() {
+                                                          _avatarBase64 = null;
+                                                        });
+                                                      },
+                                                      child: const Padding(
+                                                        padding: EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Icon(Icons.close_rounded, size: 14, color: Colors.red),
+                                                            SizedBox(width: 2),
+                                                            Text(
+                                                              'Reset',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: Colors.red,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 18),
 
                               // Full Name
                               TextFormField(

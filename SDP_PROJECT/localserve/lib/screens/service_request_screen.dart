@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/service_request.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/local_storage_service.dart';
 import '../widgets/location_picker_screen.dart';
 import '../widgets/app_image_view.dart';
 import '../services/geocoding_service.dart';
@@ -44,7 +45,6 @@ class _ServiceRequestScreenState
   bool reminder = false;
   DateTime? dueDate;
   late String selectedService;
-  bool _didPrefillFromUser = false;
   List<String> _attachedImages = [];
   bool _isDetectingGps = false;
 
@@ -63,7 +63,11 @@ class _ServiceRequestScreenState
     super.initState();
 
     final request = widget.existingRequest;
-    final user = widget.currentUser;
+    final storage = LocalStorageService();
+    final activeLocalUser = widget.currentUser ??
+        (storage.activeUserId != null
+            ? storage.getUserById(storage.activeUserId!)
+            : null);
 
     selectedService = request?.service ??
         (serviceCategories.contains(widget.selectedService)
@@ -73,27 +77,27 @@ class _ServiceRequestScreenState
     _attachedImages = List<String>.from(request?.images ?? []);
 
     nameController = TextEditingController(
-      text: request?.name ?? user?.name ?? '',
+      text: request?.name ?? activeLocalUser?.name ?? '',
     );
 
     emailController = TextEditingController(
-      text: request?.email ?? user?.email ?? '',
+      text: request?.email ?? activeLocalUser?.email ?? '',
     );
 
     mobileController = TextEditingController(
-      text: request?.mobile ?? user?.mobile ?? '',
+      text: request?.mobile ?? activeLocalUser?.mobile ?? '',
     );
 
     addressController = TextEditingController(
-      text: request?.address ?? user?.address ?? '',
+      text: request?.address ?? activeLocalUser?.address ?? '',
     );
 
     descriptionController = TextEditingController(
       text: request?.description ?? '',
     );
 
-    _selectedLatitude = request?.latitude ?? user?.latitude;
-    _selectedLongitude = request?.longitude ?? user?.longitude;
+    _selectedLatitude = request?.latitude ?? activeLocalUser?.latitude;
+    _selectedLongitude = request?.longitude ?? activeLocalUser?.longitude;
 
     priority = request?.priority ?? 'Medium';
     reminder = request?.reminder ?? false;
@@ -103,10 +107,13 @@ class _ServiceRequestScreenState
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_didPrefillFromUser && widget.existingRequest == null) {
-      _didPrefillFromUser = true;
+    if (widget.existingRequest == null) {
       final authUser = widget.currentUser ??
-          context.read<AuthService>().currentUser;
+          context.read<AuthService>().currentUser ??
+          (LocalStorageService().activeUserId != null
+              ? LocalStorageService().getUserById(LocalStorageService().activeUserId!)
+              : null);
+
       if (authUser != null) {
         if (nameController.text.trim().isEmpty && authUser.name.isNotEmpty) {
           nameController.text = authUser.name;
@@ -127,8 +134,6 @@ class _ServiceRequestScreenState
       }
     }
   }
-
-
 
   @override
   void dispose() {
@@ -230,7 +235,10 @@ class _ServiceRequestScreenState
 
     final oldRequest = widget.existingRequest;
     final activeUser = widget.currentUser ??
-        (mounted ? context.read<AuthService>().currentUser : null);
+        (mounted ? context.read<AuthService>().currentUser : null) ??
+        (LocalStorageService().activeUserId != null
+            ? LocalStorageService().getUserById(LocalStorageService().activeUserId!)
+            : null);
 
     final request = ServiceRequest(
       id: oldRequest?.id ??
@@ -546,9 +554,12 @@ class _ServiceRequestScreenState
   }
 
   void _showAddPhotoSheet() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -567,32 +578,36 @@ class _ServiceRequestScreenState
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
+                          color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF2563EB), size: 20),
+                        child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF3B82F6), size: 20),
                       ),
                       const SizedBox(width: 12),
-                      const Text(
+                      Text(
                         'Attach Issue Photo',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
                       ),
                     ],
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close, color: theme.colorScheme.onSurfaceVariant),
                     onPressed: () => Navigator.pop(sheetContext),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Take a photo with your camera or select an existing photo from your phone storage.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 20),
 
-              // Only two options: Click photo (camera) & Phone storage
+              // Two options: Click photo (camera) & Phone storage
               Row(
                 children: [
                   // 1. Camera Button (Click Photo)
@@ -606,26 +621,36 @@ class _ServiceRequestScreenState
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0FDF4),
+                          color: isDark ? const Color(0xFF0F2E1E) : const Color(0xFFF0FDF4),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF86EFAC), width: 1.5),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF16A34A).withValues(alpha: 0.5) : const Color(0xFF86EFAC),
+                            width: 1.5,
+                          ),
                         ),
-                        child: const Column(
+                        child: Column(
                           children: [
-                            CircleAvatar(
+                            const CircleAvatar(
                               radius: 22,
                               backgroundColor: Color(0xFF16A34A),
                               child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 22),
                             ),
-                            SizedBox(height: 10),
+                            const SizedBox(height: 10),
                             Text(
                               'Take Photo',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF14532D)),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF14532D),
+                              ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
                               'Click with camera',
-                              style: TextStyle(fontSize: 11, color: Color(0xFF15803D)),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -646,26 +671,36 @@ class _ServiceRequestScreenState
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFAF5FF),
+                          color: isDark ? const Color(0xFF28183E) : const Color(0xFFFAF5FF),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFD8B4FE), width: 1.5),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.5) : const Color(0xFFD8B4FE),
+                            width: 1.5,
+                          ),
                         ),
-                        child: const Column(
+                        child: Column(
                           children: [
-                            CircleAvatar(
+                            const CircleAvatar(
                               radius: 22,
                               backgroundColor: Color(0xFF7C3AED),
                               child: Icon(Icons.photo_library_rounded, color: Colors.white, size: 22),
                             ),
-                            SizedBox(height: 10),
+                            const SizedBox(height: 10),
                             Text(
                               'Phone Storage',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF581C87)),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? const Color(0xFFD8B4FE) : const Color(0xFF581C87),
+                              ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
                               'Upload from gallery',
-                              style: TextStyle(fontSize: 11, color: Color(0xFF7E22CE)),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? const Color(0xFFC084FC) : const Color(0xFF7E22CE),
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -684,18 +719,25 @@ class _ServiceRequestScreenState
   }
 
   Widget _buildSectionCard({
+    required BuildContext context,
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(18),
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+            color: (isDark ? Colors.black : const Color(0xFF0F172A)).withValues(alpha: isDark ? 0.25 : 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -707,11 +749,13 @@ class _ServiceRequestScreenState
   }
 
   Widget _buildSectionHeader({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required Color iconColor,
     required Color iconBg,
   }) {
+    final theme = Theme.of(context);
     return Row(
       children: [
         Container(
@@ -725,10 +769,10 @@ class _ServiceRequestScreenState
         const SizedBox(width: 12),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF0F172A),
+            color: theme.colorScheme.onSurface,
             letterSpacing: -0.2,
           ),
         ),
@@ -736,8 +780,10 @@ class _ServiceRequestScreenState
     );
   }
 
-  Widget _buildPriorityChip(String level, Color color, Color bg) {
+  Widget _buildPriorityChip(BuildContext context, String level, Color color, Color lightBg, Color darkBg) {
     final isSelected = priority == level;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Expanded(
       child: InkWell(
         onTap: () {
@@ -750,10 +796,10 @@ class _ServiceRequestScreenState
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: isSelected ? bg : const Color(0xFFF8FAFC),
+            color: isSelected ? (isDark ? darkBg : lightBg) : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? color : const Color(0xFFE2E8F0),
+              color: isSelected ? color : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
               width: isSelected ? 1.8 : 1,
             ),
           ),
@@ -769,7 +815,7 @@ class _ServiceRequestScreenState
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? color : const Color(0xFF64748B),
+                  color: isSelected ? color : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                 ),
               ),
             ],
@@ -779,9 +825,58 @@ class _ServiceRequestScreenState
     );
   }
 
+  InputDecoration _buildInputDecoration({
+    required BuildContext context,
+    required String labelText,
+    required String hintText,
+    required Widget prefixIcon,
+    Widget? suffixIcon,
+    bool alignLabelWithHint = false,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InputDecoration(
+      labelText: labelText,
+      labelStyle: TextStyle(
+        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+        fontSize: 14,
+      ),
+      hintText: hintText,
+      hintStyle: TextStyle(
+        color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+        fontSize: 13,
+      ),
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      alignLabelWithHint: alignLabelWithHint,
+      filled: true,
+      fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingRequest != null;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return PopScope(
       canPop: false,
@@ -794,7 +889,7 @@ class _ServiceRequestScreenState
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
             isEditing
@@ -807,8 +902,9 @@ class _ServiceRequestScreenState
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             children: [
-              // 1. SERVICE CATEGORY MODULE (Starts directly at the top)
+              // 1. SERVICE CATEGORY MODULE
               _buildSectionCard(
+                context: context,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -817,14 +913,16 @@ class _ServiceRequestScreenState
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
+                            color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF1E40AF) : const Color(0xFFBFDBFE),
+                            ),
                           ),
                           child: Icon(
                             _getServiceIcon(selectedService),
                             size: 24,
-                            color: const Color(0xFF1E40AF),
+                            color: const Color(0xFF3B82F6),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -832,22 +930,22 @@ class _ServiceRequestScreenState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'SERVICE CATEGORY',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF64748B),
+                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                                   letterSpacing: 0.6,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 selectedService,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: theme.colorScheme.onSurface,
                                   letterSpacing: -0.3,
                                 ),
                               ),
@@ -857,21 +955,23 @@ class _ServiceRequestScreenState
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
+                            color: const Color(0xFF16A34A).withValues(alpha: isDark ? 0.2 : 0.1),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0),
+                            ),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.verified_rounded, size: 14, color: Color(0xFF16A34A)),
+                              Icon(Icons.verified_rounded, size: 14, color: Color(0xFF22C55E)),
                               SizedBox(width: 4),
                               Text(
                                 'Active Trade',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF16A34A),
+                                  color: Color(0xFF22C55E),
                                 ),
                               ),
                             ],
@@ -882,39 +982,35 @@ class _ServiceRequestScreenState
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       isExpanded: true,
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                       initialValue: serviceCategories.contains(selectedService)
                           ? selectedService
                           : 'Plumbing',
-                      decoration: InputDecoration(
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Service Type',
                         hintText: 'Select required service',
-                        prefixIcon: const Icon(Icons.handyman_outlined, color: Color(0xFF1E40AF)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                        ),
+                        prefixIcon: const Icon(Icons.handyman_outlined, color: Color(0xFF3B82F6)),
                       ),
                       items: serviceCategories.map((service) {
                         return DropdownMenuItem<String>(
                           value: service,
                           child: Row(
                             children: [
-                              Icon(_getServiceIcon(service), size: 20, color: const Color(0xFF2563EB)),
+                              Icon(_getServiceIcon(service), size: 20, color: const Color(0xFF3B82F6)),
                               const SizedBox(width: 12),
                               Text(
                                 service,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                  color: theme.colorScheme.onSurface,
+                                ),
                               ),
                             ],
                           ),
@@ -936,14 +1032,16 @@ class _ServiceRequestScreenState
 
               // 2. CONTACT & LOCATION MODULE
               _buildSectionCard(
+                context: context,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildSectionHeader(
+                      context: context,
                       icon: Icons.person_pin_circle_rounded,
                       title: 'Contact & Service Location',
-                      iconColor: const Color(0xFF2563EB),
-                      iconBg: const Color(0xFFEFF6FF),
+                      iconColor: const Color(0xFF3B82F6),
+                      iconBg: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1),
                     ),
                     const SizedBox(height: 18),
 
@@ -951,25 +1049,12 @@ class _ServiceRequestScreenState
                     TextFormField(
                       controller: nameController,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Name',
                         hintText: 'Enter contact name',
-                        prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF64748B)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                        ),
+                        prefixIcon: Icon(Icons.person_outline_rounded, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
@@ -986,25 +1071,12 @@ class _ServiceRequestScreenState
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Email',
                         hintText: 'Enter contact email for updates',
-                        prefixIcon: const Icon(Icons.mail_outline_rounded, color: Color(0xFF64748B)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                        ),
+                        prefixIcon: Icon(Icons.mail_outline_rounded, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
@@ -1024,25 +1096,12 @@ class _ServiceRequestScreenState
                       controller: mobileController,
                       keyboardType: TextInputType.phone,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Mobile Number',
                         hintText: 'Enter 10 digit mobile number',
-                        prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF64748B)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                        ),
+                        prefixIcon: Icon(Icons.phone_outlined, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
@@ -1061,14 +1120,16 @@ class _ServiceRequestScreenState
 
                     const SizedBox(height: 14),
 
-                    // ADDRESS (with right-hand map symbol)
+                    // ADDRESS (with Live GPS and Map picker)
                     TextFormField(
                       controller: addressController,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Address',
                         hintText: 'Enter service address or pick on map',
-                        prefixIcon: const Icon(Icons.location_on_outlined, color: Color(0xFF64748B)),
+                        prefixIcon: Icon(Icons.location_on_outlined, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                         suffixIcon: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                           child: Row(
@@ -1083,9 +1144,11 @@ class _ServiceRequestScreenState
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFF0FDF4),
+                                      color: const Color(0xFF16A34A).withValues(alpha: isDark ? 0.2 : 0.1),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                      border: Border.all(
+                                        color: isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0),
+                                      ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -1096,17 +1159,17 @@ class _ServiceRequestScreenState
                                                 height: 14,
                                                 child: CircularProgressIndicator(
                                                   strokeWidth: 2,
-                                                  color: Color(0xFF16A34A),
+                                                  color: Color(0xFF22C55E),
                                                 ),
                                               )
-                                            : const Icon(Icons.my_location, size: 16, color: Color(0xFF16A34A)),
+                                            : const Icon(Icons.my_location, size: 16, color: Color(0xFF22C55E)),
                                         const SizedBox(width: 4),
                                         const Text(
                                           'GPS',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF16A34A),
+                                            color: Color(0xFF22C55E),
                                           ),
                                         ),
                                       ],
@@ -1124,21 +1187,23 @@ class _ServiceRequestScreenState
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFEFF6FF),
+                                      color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                                      border: Border.all(
+                                        color: isDark ? const Color(0xFF1E40AF) : const Color(0xFFBFDBFE),
+                                      ),
                                     ),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.map_rounded, size: 16, color: Color(0xFF2563EB)),
+                                        Icon(Icons.map_rounded, size: 16, color: Color(0xFF3B82F6)),
                                         SizedBox(width: 4),
                                         Text(
                                           'Map',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF2563EB),
+                                            color: Color(0xFF3B82F6),
                                           ),
                                         ),
                                       ],
@@ -1148,21 +1213,6 @@ class _ServiceRequestScreenState
                               ),
                             ],
                           ),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
                         ),
                       ),
                       validator: (value) {
@@ -1178,13 +1228,15 @@ class _ServiceRequestScreenState
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0FDF4),
+                          color: const Color(0xFF16A34A).withValues(alpha: isDark ? 0.2 : 0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFBBF7D0)),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF16A34A)),
+                            const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF22C55E)),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -1192,7 +1244,7 @@ class _ServiceRequestScreenState
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF15803D),
+                                  color: Color(0xFF22C55E),
                                 ),
                               ),
                             ),
@@ -1203,7 +1255,7 @@ class _ServiceRequestScreenState
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF16A34A),
+                                  color: Color(0xFF22C55E),
                                   decoration: TextDecoration.underline,
                                 ),
                               ),
@@ -1218,14 +1270,16 @@ class _ServiceRequestScreenState
 
               // 3. SCHEDULE & PREFERENCES MODULE
               _buildSectionCard(
+                context: context,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildSectionHeader(
+                      context: context,
                       icon: Icons.tune_rounded,
                       title: 'Schedule & Priority',
-                      iconColor: const Color(0xFFD97706),
-                      iconBg: const Color(0xFFFEF3C7),
+                      iconColor: const Color(0xFFF59E0B),
+                      iconBg: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.2 : 0.1),
                     ),
                     const SizedBox(height: 18),
 
@@ -1236,22 +1290,24 @@ class _ServiceRequestScreenState
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                          ),
                         ),
                         child: Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEEF2FF),
+                                color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.2 : 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(
                                 Icons.calendar_today_rounded,
                                 size: 20,
-                                color: Color(0xFF4F46E5),
+                                color: Color(0xFF818CF8),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -1259,12 +1315,12 @@ class _ServiceRequestScreenState
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'Preferred Service Date',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: Color(0xFF64748B),
+                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -1274,8 +1330,8 @@ class _ServiceRequestScreenState
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
                                       color: dueDate == null
-                                          ? const Color(0xFF94A3B8)
-                                          : const Color(0xFF0F172A),
+                                          ? (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8))
+                                          : theme.colorScheme.onSurface,
                                     ),
                                   ),
                                 ],
@@ -1284,16 +1340,18 @@ class _ServiceRequestScreenState
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isDark ? const Color(0xFF1E293B) : Colors.white,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                                border: Border.all(
+                                  color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                                ),
                               ),
                               child: const Text(
                                 'Select',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF2563EB),
+                                  color: Color(0xFF3B82F6),
                                 ),
                               ),
                             ),
@@ -1305,27 +1363,27 @@ class _ServiceRequestScreenState
                     const SizedBox(height: 16),
 
                     // PRIORITY SELECTOR
-                    const Text(
+                    Text(
                       'Request Priority',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF475569),
+                        color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildPriorityChip('Low', const Color(0xFF16A34A), const Color(0xFFF0FDF4)),
+                        _buildPriorityChip(context, 'Low', const Color(0xFF22C55E), const Color(0xFFF0FDF4), const Color(0xFF0F2E1E)),
                         const SizedBox(width: 10),
-                        _buildPriorityChip('Medium', const Color(0xFF2563EB), const Color(0xFFEFF6FF)),
+                        _buildPriorityChip(context, 'Medium', const Color(0xFF3B82F6), const Color(0xFFEFF6FF), const Color(0xFF1E293B)),
                         const SizedBox(width: 10),
-                        _buildPriorityChip('High', const Color(0xFFDC2626), const Color(0xFFFEF2F2)),
+                        _buildPriorityChip(context, 'High', const Color(0xFFEF4444), const Color(0xFFFEF2F2), const Color(0xFF3B1219)),
                       ],
                     ),
 
                     const SizedBox(height: 14),
-                    const Divider(color: Color(0xFFF1F5F9), height: 20),
+                    Divider(color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9), height: 20),
 
                     // REMINDER TOGGLE
                     Row(
@@ -1333,35 +1391,44 @@ class _ServiceRequestScreenState
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: reminder ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                            color: reminder
+                                ? const Color(0xFF2563EB).withValues(alpha: isDark ? 0.2 : 0.1)
+                                : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9)),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
                             reminder ? Icons.notifications_active_rounded : Icons.notifications_outlined,
                             size: 20,
-                            color: reminder ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                            color: reminder ? const Color(0xFF3B82F6) : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8)),
                           ),
                         ),
                         const SizedBox(width: 14),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Booking Reminder',
-                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF0F172A)),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: theme.colorScheme.onSurface,
+                                ),
                               ),
-                              SizedBox(height: 2),
+                              const SizedBox(height: 2),
                               Text(
                                 'Get in-app status notifications & prompt updates',
-                                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                ),
                               ),
                             ],
                           ),
                         ),
                         Switch(
                           value: reminder,
-                          activeThumbColor: const Color(0xFF2563EB),
+                          activeThumbColor: const Color(0xFF3B82F6),
                           onChanged: (value) {
                             setState(() {
                               reminder = value;
@@ -1376,39 +1443,28 @@ class _ServiceRequestScreenState
 
               // 4. REQUIREMENTS MODULE
               _buildSectionCard(
+                context: context,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildSectionHeader(
+                      context: context,
                       icon: Icons.notes_rounded,
                       title: 'Additional Requirements',
-                      iconColor: const Color(0xFF0D9488),
-                      iconBg: const Color(0xFFCCFBF1),
+                      iconColor: const Color(0xFF14B8A6),
+                      iconBg: const Color(0xFF14B8A6).withValues(alpha: isDark ? 0.2 : 0.1),
                     ),
                     const SizedBox(height: 14),
                     TextFormField(
                       controller: descriptionController,
                       maxLines: 3,
-                      decoration: InputDecoration(
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: _buildInputDecoration(
+                        context: context,
                         labelText: 'Description (Optional)',
                         hintText: 'Describe issue details, preferred timing, or special notes...',
-                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        prefixIcon: Icon(Icons.description_outlined, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                         alignLabelWithHint: true,
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.all(16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                        ),
                       ),
                     ),
                   ],
@@ -1417,6 +1473,7 @@ class _ServiceRequestScreenState
 
               // 5. ISSUE PHOTOS MODULE (OPTIONAL)
               _buildSectionCard(
+                context: context,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1424,35 +1481,38 @@ class _ServiceRequestScreenState
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _buildSectionHeader(
+                          context: context,
                           icon: Icons.camera_alt_rounded,
                           title: 'Issue Photos',
-                          iconColor: const Color(0xFF7C3AED),
-                          iconBg: const Color(0xFFF3E8FF),
+                          iconColor: const Color(0xFFA855F7),
+                          iconBg: const Color(0xFFA855F7).withValues(alpha: isDark ? 0.2 : 0.1),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                            ),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Optional',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF64748B),
+                              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'Attach photos of the issue so the specialist can review the damage, evaluate required parts, and prepare before arriving.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                         height: 1.4,
                       ),
                     ),
@@ -1469,30 +1529,36 @@ class _ServiceRequestScreenState
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF0FDF4),
+                                  color: isDark ? const Color(0xFF0F2E1E) : const Color(0xFFF0FDF4),
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFF86EFAC), width: 1.5),
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF16A34A).withValues(alpha: 0.5) : const Color(0xFF86EFAC),
+                                    width: 1.5,
+                                  ),
                                 ),
-                                child: const Column(
+                                child: Column(
                                   children: [
-                                    CircleAvatar(
+                                    const CircleAvatar(
                                       radius: 22,
                                       backgroundColor: Color(0xFF16A34A),
                                       child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 22),
                                     ),
-                                    SizedBox(height: 10),
+                                    const SizedBox(height: 10),
                                     Text(
                                       'Take Photo',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
-                                        color: Color(0xFF14532D),
+                                        color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF14532D),
                                       ),
                                     ),
-                                    SizedBox(height: 3),
+                                    const SizedBox(height: 3),
                                     Text(
                                       'Click with camera',
-                                      style: TextStyle(fontSize: 11, color: Color(0xFF15803D)),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                                      ),
                                       textAlign: TextAlign.center,
                                     ),
                                   ],
@@ -1510,30 +1576,36 @@ class _ServiceRequestScreenState
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFAF5FF),
+                                  color: isDark ? const Color(0xFF28183E) : const Color(0xFFFAF5FF),
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFFD8B4FE), width: 1.5),
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.5) : const Color(0xFFD8B4FE),
+                                    width: 1.5,
+                                  ),
                                 ),
-                                child: const Column(
+                                child: Column(
                                   children: [
-                                    CircleAvatar(
+                                    const CircleAvatar(
                                       radius: 22,
                                       backgroundColor: Color(0xFF7C3AED),
                                       child: Icon(Icons.photo_library_rounded, color: Colors.white, size: 22),
                                     ),
-                                    SizedBox(height: 10),
+                                    const SizedBox(height: 10),
                                     Text(
                                       'Phone Storage',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
-                                        color: Color(0xFF581C87),
+                                        color: isDark ? const Color(0xFFD8B4FE) : const Color(0xFF581C87),
                                       ),
                                     ),
-                                    SizedBox(height: 3),
+                                    const SizedBox(height: 3),
                                     Text(
                                       'Upload from gallery',
-                                      style: TextStyle(fontSize: 11, color: Color(0xFF7E22CE)),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark ? const Color(0xFFC084FC) : const Color(0xFF7E22CE),
+                                      ),
                                       textAlign: TextAlign.center,
                                     ),
                                   ],
@@ -1562,21 +1634,23 @@ class _ServiceRequestScreenState
                                     child: Container(
                                       width: 90,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFAF5FF),
+                                        color: isDark ? const Color(0xFF28183E) : const Color(0xFFFAF5FF),
                                         borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(color: const Color(0xFFD8B4FE)),
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF7C3AED) : const Color(0xFFD8B4FE),
+                                        ),
                                       ),
                                       child: const Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF7C3AED)),
+                                          Icon(Icons.add_photo_alternate_rounded, color: Color(0xFFA855F7)),
                                           SizedBox(height: 4),
                                           Text(
                                             '+ Add More',
                                             style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.bold,
-                                              color: Color(0xFF7C3AED),
+                                              color: Color(0xFFA855F7),
                                             ),
                                           ),
                                         ],
@@ -1596,7 +1670,9 @@ class _ServiceRequestScreenState
                                         height: 100,
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                          ),
                                         ),
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(13),
@@ -1663,13 +1739,13 @@ class _ServiceRequestScreenState
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                                  const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF22C55E)),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${_attachedImages.length} photo${_attachedImages.length > 1 ? "s" : ""} attached • Worker can inspect',
                                     style: const TextStyle(
                                       fontSize: 11,
-                                      color: Color(0xFF15803D),
+                                      color: Color(0xFF22C55E),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -1684,16 +1760,18 @@ class _ServiceRequestScreenState
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF0FDF4),
+                                        color: const Color(0xFF16A34A).withValues(alpha: isDark ? 0.2 : 0.1),
                                         borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0),
+                                        ),
                                       ),
                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.camera_alt_rounded, size: 12, color: Color(0xFF16A34A)),
+                                          Icon(Icons.camera_alt_rounded, size: 12, color: Color(0xFF22C55E)),
                                           SizedBox(width: 3),
-                                          Text('Camera', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                                          Text('Camera', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF22C55E))),
                                         ],
                                       ),
                                     ),
@@ -1705,16 +1783,18 @@ class _ServiceRequestScreenState
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFAF5FF),
+                                        color: const Color(0xFF7C3AED).withValues(alpha: isDark ? 0.2 : 0.1),
                                         borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: const Color(0xFFE9D5FF)),
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF6B21A8) : const Color(0xFFE9D5FF),
+                                        ),
                                       ),
                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.photo_library_rounded, size: 12, color: Color(0xFF7C3AED)),
+                                          Icon(Icons.photo_library_rounded, size: 12, color: Color(0xFFA855F7)),
                                           SizedBox(width: 3),
-                                          Text('Storage', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF7E22CE))),
+                                          Text('Storage', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
                                         ],
                                       ),
                                     ),
@@ -1738,7 +1818,7 @@ class _ServiceRequestScreenState
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF1E40AF), Color(0xFF2563EB)],
+                    colors: [Color(0xFF1D4ED8), Color(0xFF2563EB)],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
@@ -1780,7 +1860,7 @@ class _ServiceRequestScreenState
                   },
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    foregroundColor: const Color(0xFF64748B),
+                    foregroundColor: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                   ),
                   child: const Text(
                     'Cancel & Go Back',

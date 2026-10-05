@@ -27,32 +27,40 @@ class AppImageView extends StatelessWidget {
   });
 
   static bool isBase64String(String path) {
-    return path.startsWith('data:image') ||
-        (!path.startsWith('http') && !path.startsWith('/') && path.length > 200 && path.contains('base64,'));
+    final clean = path.trim();
+    return clean.startsWith('data:image') ||
+        (!clean.startsWith('http://') &&
+            !clean.startsWith('https://') &&
+            !clean.startsWith('/') &&
+            !clean.startsWith('file:') &&
+            clean.length > 50 &&
+            (clean.contains('base64,') || !clean.contains(' ')));
   }
 
   static bool isNetworkUrl(String path) {
-    return path.startsWith('http://') || path.startsWith('https://');
+    final clean = path.trim();
+    return clean.startsWith('http://') || clean.startsWith('https://');
   }
 
-  static ImageProvider? getProvider(String path) {
-    if (path.trim().isEmpty) return null;
-    if (isBase64String(path)) {
+  static ImageProvider? getProvider(String? path) {
+    if (path == null || path.trim().isEmpty) return null;
+    final clean = path.trim();
+    if (isBase64String(clean)) {
       try {
-        final commaIdx = path.indexOf(',');
-        final data = commaIdx != -1 ? path.substring(commaIdx + 1) : path;
-        return MemoryImage(base64Decode(data));
+        final commaIdx = clean.indexOf(',');
+        final data = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
+        return MemoryImage(base64Decode(data.replaceAll('\n', '').replaceAll('\r', '')));
       } catch (_) {
         return null;
       }
     }
-    if (isNetworkUrl(path)) {
-      return NetworkImage(path);
+    if (isNetworkUrl(clean)) {
+      return NetworkImage(clean);
     }
     if (!kIsWeb) {
       try {
-        final clean = path.replaceFirst('file://', '');
-        final file = io.File(clean);
+        final cleanFile = clean.replaceFirst('file://', '');
+        final file = io.File(cleanFile);
         if (file.existsSync()) {
           return FileImage(file);
         }

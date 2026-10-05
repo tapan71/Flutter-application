@@ -10,6 +10,8 @@ import 'history_screen.dart';
 import 'category_workers_screen.dart';
 import '../widgets/notification_badge_button.dart';
 import '../widgets/user_profile_dialog.dart';
+import '../widgets/theme_mode_toggle_button.dart';
+import '../widgets/app_image_view.dart';
 import 'membership_screen.dart';
 
 class ServiceCategoryItem {
@@ -425,6 +427,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          // Theme Switcher (Dark / Light / Auto)
+          const ThemeModeToggleButton(compact: true),
+
           // + symbol for creating new request
           IconButton(
             icon: const Icon(Icons.add_circle, color: Colors.blueAccent, size: 28),
@@ -478,12 +483,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
                               )
                             : null,
-                        color: user.hasActiveMembership ? null : const Color(0xFFF1F5F9),
+                        color: user.hasActiveMembership ? null : Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: user.hasActiveMembership
                               ? const Color(0xFFFBBF24)
-                              : const Color(0xFFCBD5E1),
+                              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.6),
                           width: 1.2,
                         ),
                         boxShadow: user.hasActiveMembership
@@ -507,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Text(
                             'VIP',
                             style: TextStyle(
-                              color: user.hasActiveMembership ? Colors.white : const Color(0xFF334155),
+                              color: user.hasActiveMembership ? Colors.white : Theme.of(context).colorScheme.onSurface,
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5,
@@ -537,12 +542,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         CircleAvatar(
                           radius: 17,
                           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                          backgroundImage: user.avatarUrl != null
-                              ? NetworkImage(user.avatarUrl!)
-                              : null,
-                          onBackgroundImageError:
-                              user.avatarUrl != null ? (error, stackTrace) {} : null,
-                          child: user.avatarUrl == null
+                          backgroundImage: AppImageView.getProvider(user.effectiveAvatarUrl),
+                          onBackgroundImageError: (error, stackTrace) {},
+                          child: AppImageView.getProvider(user.effectiveAvatarUrl) == null
                               ? Text(
                                   user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
                                   style: TextStyle(
@@ -597,12 +599,15 @@ class _HomeScreenState extends State<HomeScreen> {
               // 1. SEARCH BAR AT TOP
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.7),
+                    width: 1.2,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -611,11 +616,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: TextField(
                   decoration: InputDecoration(
                     hintText: 'Search services (e.g. AC Repair, Plumbing)...',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                    prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 22),
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                      fontSize: 14,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 22,
+                    ),
                     suffixIcon: searchQuery.isNotEmpty
                         ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
                             onPressed: () {
                               setState(() {
                                 searchQuery = '';
@@ -764,23 +780,153 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
 
+              // 3. MODERN HERO PROMO BANNER (URBAN COMPANY / TASKRABBIT STYLE)
+              Container(
+                margin: const EdgeInsets.only(bottom: 18),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E3A8A), Color(0xFF2563EB), Color(0xFF4F46E5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.bolt, color: Colors.amber, size: 14),
+                                SizedBox(width: 4),
+                                Text(
+                                  'INSTANT DISPATCH • 20 KM RADIUS',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Expert Home Services,\nDelivered at Your Doorstep',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              height: 1.25,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF1E3A8A),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              visualDensity: VisualDensity.compact,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            icon: const Icon(Icons.add_task_rounded, size: 16),
+                            label: const Text(
+                              'Request Service Now',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                            ),
+                            onPressed: () => openServiceRequest(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.home_repair_service_rounded,
+                        size: 42,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 4. TRUST & BENEFIT HIGHLIGHT PILLS
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildTrustBadge(
+                      icon: Icons.verified_user_rounded,
+                      label: 'Verified Specialists',
+                      color: const Color(0xFF3B82F6),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTrustBadge(
+                      icon: Icons.timer_rounded,
+                      label: '1-Hour Direct Match',
+                      color: const Color(0xFF10B981),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTrustBadge(
+                      icon: Icons.price_check_rounded,
+                      label: 'Transparent Billing',
+                      color: const Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTrustBadge(
+                      icon: Icons.star_rounded,
+                      label: '4.8★ Top Rated',
+                      color: const Color(0xFF8B5CF6),
+                    ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 20),
 
               // Categories Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(Icons.category_rounded, size: 18, color: Color(0xFF2563EB)),
-                      SizedBox(width: 8),
+                      Icon(Icons.category_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 8),
                       Text(
                         'Explore Services',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.4,
-                          color: Color(0xFF0F172A),
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ],
@@ -788,15 +934,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '${filteredCategories.length} categories',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ),
@@ -843,17 +989,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
 
               // Featured Verified Pro Specialists
-              const Text(
-                'Featured Verified Specialists ⭐',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Top-rated professionals available for 1-hour direct booking',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Featured Specialists ⭐',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      Text(
+                        'Verified professionals available for 1-hour direct booking',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
 
@@ -868,7 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (pros.isEmpty) return const SizedBox.shrink();
 
                   return SizedBox(
-                    height: 80,
+                    height: 88,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: pros.length,
@@ -876,26 +1039,55 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (c, i) {
                         final pro = pros[i];
                         return Container(
-                          width: 210,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          width: 230,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(14),
+                            color: Theme.of(ctx).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: Colors.grey.shade300,
-                              width: 1,
+                              color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.7),
+                              width: 1.2,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
                           child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
                             onTap: () => UserProfileDialog.show(ctx, user: pro),
                             child: Row(
                               children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundImage: pro.avatarUrl != null ? NetworkImage(pro.avatarUrl!) : null,
-                                  child: pro.avatarUrl == null ? const Icon(Icons.engineering, size: 18) : null,
+                                Stack(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Theme.of(ctx).colorScheme.primaryContainer,
+                                      backgroundImage: AppImageView.getProvider(pro.effectiveAvatarUrl),
+                                      child: AppImageView.getProvider(pro.effectiveAvatarUrl) == null ? const Icon(Icons.engineering, size: 20) : null,
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFF3B82F6),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.check,
+                                          size: 8,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -903,21 +1095,41 @@ class _HomeScreenState extends State<HomeScreen> {
                                     children: [
                                       Text(
                                         pro.name,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          color: Theme.of(ctx).colorScheme.onSurface,
+                                        ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       Text(
                                         pro.workerSkill ?? 'General',
-                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Theme.of(ctx).colorScheme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       Row(
                                         children: [
-                                          const Icon(Icons.star, size: 11, color: Colors.amber),
+                                          const Icon(Icons.star_rounded, size: 13, color: Colors.amber),
                                           const SizedBox(width: 2),
                                           Text(
                                             pro.rating.toStringAsFixed(1),
-                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: Theme.of(ctx).colorScheme.onSurface,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '(${pro.completedJobsCount} jobs)',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.5),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -939,6 +1151,39 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTrustBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ],
       ),
     );
   }

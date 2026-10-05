@@ -9,6 +9,7 @@ import '../../widgets/location_picker_screen.dart';
 import '../service_details_screen.dart';
 import '../history_screen.dart';
 import '../../widgets/notification_badge_button.dart';
+import '../../widgets/theme_mode_toggle_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
 import '../../widgets/user_profile_dialog.dart';
 import '../../widgets/submit_bill_dialog.dart';
@@ -183,17 +184,22 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
 
     final dbService = context.read<DatabaseService>();
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.amber.shade400, width: 1.5),
+        color: isDark ? const Color(0xFF2E2007) : Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.8 : 0.6),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.amber.shade200.withValues(alpha: 0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.15 : 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -207,7 +213,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.amber.shade700,
+                    color: const Color(0xFFF59E0B),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.timer_outlined, color: Colors.white, size: 18),
@@ -220,14 +226,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                       Text(
                         'Direct Job Invitations (${directInvitations.length})',
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w800,
                           fontSize: 15,
-                          color: Colors.amber.shade900,
+                          color: isDark ? const Color(0xFFFDE68A) : Colors.amber.shade900,
                         ),
                       ),
                       Text(
                         '1-hour response limit. The customer selected you directly.',
-                        style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? const Color(0xFFFCD34D) : Colors.amber.shade900,
+                        ),
                       ),
                     ],
                   ),
@@ -581,6 +590,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
           ],
         ),
         actions: [
+          const ThemeModeToggleButton(compact: true),
           NotificationBadgeButton(user: worker),
           IconButton(
             tooltip: 'Edit Profile & Details',

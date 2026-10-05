@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import '../widgets/user_profile_dialog.dart';
 import '../widgets/direct_worker_booking_dialog.dart';
+import '../widgets/app_image_view.dart';
 import 'service_request_screen.dart';
 
 class CategoryWorkersScreen extends StatefulWidget {
@@ -387,13 +388,9 @@ class _CategoryWorkersScreenState extends State<CategoryWorkersScreen> {
                   children: [
                     CircleAvatar(
                       radius: 30,
-                      backgroundImage: worker.avatarUrl != null &&
-                              worker.avatarUrl!.isNotEmpty
-                          ? NetworkImage(worker.avatarUrl!)
-                          : null,
-                      onBackgroundImageError: worker.avatarUrl != null ? (error, stackTrace) {} : null,
-                      child: (worker.avatarUrl == null ||
-                              worker.avatarUrl!.isEmpty)
+                      backgroundImage: AppImageView.getProvider(worker.effectiveAvatarUrl),
+                      onBackgroundImageError: (error, stackTrace) {},
+                      child: AppImageView.getProvider(worker.effectiveAvatarUrl) == null
                           ? const Icon(Icons.engineering, size: 30)
                           : null,
                     ),

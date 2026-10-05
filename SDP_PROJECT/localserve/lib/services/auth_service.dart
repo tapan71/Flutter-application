@@ -9,7 +9,7 @@ import 'local_storage_service.dart';
 class AuthService extends ChangeNotifier {
   AppUser? _currentUser;
   bool _isLoading = false;
-  bool _isInitializingSession = true;
+  bool _isInitializingSession = false;
   bool _isFirebaseInitialized = false;
   bool _isRegistering = false;
   final LocalStorageService _storage = LocalStorageService();
@@ -120,25 +120,30 @@ class AuthService extends ChangeNotifier {
       // 2. Load registered users from disk
       final savedUsers = _storage.getAllUsers();
       if (savedUsers.isEmpty) {
-        // Seed default demo users
-        for (final demo in demoUsers) {
-          _registeredUsers.add(demo);
-          await _storage.saveUser(demo, password: 'password');
-        }
+        // Seed default demo users in batch
+        _registeredUsers.addAll(demoUsers);
+        final defaultPasswords = {for (final d in demoUsers) d.email.toLowerCase(): 'password'};
+        await _storage.saveUsersBatch(demoUsers, passwordsMap: defaultPasswords);
       } else {
         _registeredUsers.addAll(savedUsers);
-        // Ensure demo users are present
+        // Ensure demo users are present without overwriting registered custom users
+        final missingDemos = <AppUser>[];
+        final missingPasswords = <String, String>{};
         for (final demo in demoUsers) {
-          if (!_registeredUsers.any((u) => u.uid == demo.uid)) {
+          if (!_registeredUsers.any((u) => u.uid == demo.uid || u.email.toLowerCase() == demo.email.toLowerCase())) {
             _registeredUsers.add(demo);
-            await _storage.saveUser(demo, password: 'password');
+            missingDemos.add(demo);
+            missingPasswords[demo.email.toLowerCase()] = 'password';
           }
+        }
+        if (missingDemos.isNotEmpty) {
+          await _storage.saveUsersBatch(missingDemos, passwordsMap: missingPasswords);
         }
       }
 
       // 3. Restore active session if available
       final activeId = _storage.activeUserId;
-      if (activeId != null) {
+      if (activeId != null && activeId.isNotEmpty) {
         final savedUser = _storage.getUserById(activeId);
         if (savedUser != null) {
           _currentUser = savedUser;
@@ -153,9 +158,20 @@ class AuthService extends ChangeNotifier {
 
           if (fbUser != null) {
             await _fetchUserProfile(fbUser.uid);
-          } else if (!_storage.isInitialized || _storage.activeUserId == null) {
-            _currentUser = null;
-            notifyListeners();
+          } else {
+            // When Firebase has no active session, ensure local persistent user session is respected
+            if (_storage.activeUserId != null) {
+              final localUser = _storage.getUserById(_storage.activeUserId!);
+              if (localUser != null) {
+                _currentUser = localUser;
+                notifyListeners();
+                return;
+              }
+            }
+            if (_storage.activeUserId == null && _currentUser != null && !_currentUser!.uid.startsWith('demo_')) {
+              _currentUser = null;
+              notifyListeners();
+            }
           }
         });
       }
@@ -253,7 +269,36 @@ class AuthService extends ChangeNotifier {
         throw Exception('Please enter your password.');
       }
 
-      // 1. Try Firebase Authentication if initialized
+      // 1. Fast path: check Local Persistent Storage & Registered Users
+      var user = _storage.getUserByEmail(normalizedEmail);
+      user ??= _registeredUsers.cast<AppUser?>().firstWhere(
+            (u) => u?.email.trim().toLowerCase() == normalizedEmail,
+            orElse: () => null,
+          );
+
+      if (user != null) {
+        final savedPassword = _storage.getPassword(normalizedEmail);
+        if (savedPassword != null && savedPassword.isNotEmpty && savedPassword.trim() != trimmedPassword) {
+          throw Exception('Invalid password. Please check your password and try again.');
+        }
+        _currentUser = user;
+        await _storage.setActiveUserId(user.uid);
+        return;
+      }
+
+      // 2. Demo accounts check
+      final demo = demoUsers.cast<AppUser?>().firstWhere(
+            (u) => u?.email.trim().toLowerCase() == normalizedEmail,
+            orElse: () => null,
+          );
+      if (demo != null) {
+        _currentUser = demo;
+        await _storage.saveUser(demo, password: 'password');
+        await _storage.setActiveUserId(demo.uid);
+        return;
+      }
+
+      // 3. Try Firebase Authentication if initialized and not found locally
       if (_isFirebaseInitialized) {
         try {
           final credential = await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -269,36 +314,7 @@ class AuthService extends ChangeNotifier {
         }
       }
 
-      // 2. Offline / Local Persistent Storage Authentication
-      await Future.delayed(const Duration(milliseconds: 150));
-
-      var user = _storage.getUserByEmail(normalizedEmail);
-      user ??= _registeredUsers.cast<AppUser?>().firstWhere(
-            (u) => u?.email.trim().toLowerCase() == normalizedEmail,
-            orElse: () => null,
-          );
-
-      if (user != null) {
-        final savedPassword = _storage.getPassword(normalizedEmail);
-        if (savedPassword != null && savedPassword.isNotEmpty && savedPassword.trim() != trimmedPassword) {
-          throw Exception('Invalid password. Please check your password and try again.');
-        }
-        _currentUser = user;
-        await _storage.setActiveUserId(user.uid);
-      } else {
-        // Check demo accounts
-        final demo = demoUsers.cast<AppUser?>().firstWhere(
-              (u) => u?.email.toLowerCase() == normalizedEmail,
-              orElse: () => null,
-            );
-        if (demo != null) {
-          _currentUser = demo;
-          await _storage.saveUser(demo, password: 'password');
-          await _storage.setActiveUserId(demo.uid);
-        } else {
-          throw Exception('No account found for "$trimmedEmail". Please register first.');
-        }
-      }
+      throw Exception('No account found for "$trimmedEmail". Please register first.');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -316,6 +332,7 @@ class AuthService extends ChangeNotifier {
     double? longitude,
     required UserRole role,
     String? workerSkill,
+    String? avatarUrl,
   }) async {
     _isLoading = true;
     _isRegistering = true;
@@ -360,6 +377,10 @@ class AuthService extends ChangeNotifier {
       userUid ??= _storage.getUserByEmail(normalizedEmail)?.uid ??
           'user_${DateTime.now().millisecondsSinceEpoch}';
 
+      final effectiveAvatar = (avatarUrl != null && avatarUrl.trim().isNotEmpty)
+          ? avatarUrl.trim()
+          : AppUser.defaultAvatarUrl;
+
       final newUser = AppUser(
         uid: userUid,
         email: email.trim(),
@@ -370,6 +391,7 @@ class AuthService extends ChangeNotifier {
         longitude: longitude,
         role: role,
         workerSkill: workerSkill,
+        avatarUrl: effectiveAvatar,
         createdAt: DateTime.now(),
       );
 
@@ -421,7 +443,7 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // UPDATE FULL USER PROFILE (NAME, MOBILE, ADDRESS, COORDINATES, BIO, SKILL)
+  // UPDATE FULL USER PROFILE (NAME, MOBILE, ADDRESS, COORDINATES, BIO, SKILL, AVATAR)
   Future<void> updateUserProfile({
     required String name,
     required String mobile,
@@ -430,6 +452,7 @@ class AuthService extends ChangeNotifier {
     double? longitude,
     String? workerSkill,
     String? bio,
+    String? avatarUrl,
   }) async {
     if (_currentUser == null) return;
 
@@ -441,6 +464,7 @@ class AuthService extends ChangeNotifier {
       longitude: longitude ?? _currentUser!.longitude,
       workerSkill: workerSkill ?? _currentUser!.workerSkill,
       bio: bio ?? _currentUser!.bio,
+      avatarUrl: avatarUrl ?? _currentUser!.avatarUrl,
     );
 
     _currentUser = updated;
@@ -458,7 +482,7 @@ class AuthService extends ChangeNotifier {
 
     if (_isFirebaseInitialized) {
       try {
-        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update({
+        final Map<String, dynamic> firestoreMap = {
           'name': updated.name,
           'mobile': updated.mobile,
           'address': updated.address,
@@ -466,7 +490,11 @@ class AuthService extends ChangeNotifier {
           'longitude': updated.longitude,
           'workerSkill': updated.workerSkill,
           'bio': updated.bio,
-        });
+        };
+        if (updated.avatarUrl != null) {
+          firestoreMap['avatarUrl'] = updated.avatarUrl;
+        }
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update(firestoreMap);
       } catch (e) {
         debugPrint('Error updating user profile in Firestore: $e');
       }
