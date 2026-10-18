@@ -93,6 +93,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
   }
 
   bool _matchesWorkerSkill(AppUser worker, ServiceRequest req) {
+    // 0. Direct requests specifically targeted to this worker always match
+    if (req.targetWorkerId != null && req.targetWorkerId == worker.uid) return true;
+
     final reqService = req.service.trim().toLowerCase();
     // 1. General Service requests can be seen and accepted by ALL workers
     if (reqService == 'general service' || reqService == 'general') return true;
@@ -102,8 +105,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
     final skill = worker.workerSkill!.trim().toLowerCase();
     if (skill == 'general service' || skill == 'all') return true;
 
-    // 3. Specific trade matching
-    return reqService == skill;
+    // 3. Specific trade matching with suffix and trade normalization
+    if (reqService == skill) return true;
+    if (reqService.contains(skill) || skill.contains(reqService)) return true;
+    if (reqService.contains('plumb') && skill.contains('plumb')) return true;
+    if (reqService.contains('electr') && skill.contains('electr')) return true;
+    if (reqService.contains('carpent') && skill.contains('carpent')) return true;
+    if (reqService.contains('paint') && skill.contains('paint')) return true;
+    if (reqService.contains('clean') && skill.contains('clean')) return true;
+    if (reqService.contains('appliance') && skill.contains('appliance')) return true;
+    return false;
   }
 
   Widget _buildWorkerKpiBar(AppUser worker, ThemeData theme) {
@@ -662,22 +673,37 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                     final directInvitations = directSnapshot.data ?? [];
 
                     return StreamBuilder<List<ServiceRequest>>(
-                      stream: dbService.streamAvailableRequests(skill: worker.workerSkill),
+                      stream: dbService.streamAvailableRequests(
+                        skill: worker.workerSkill,
+                        workerId: worker.uid,
+                      ),
                       builder: (context, snapshot) {
                         final rawPending = snapshot.data ??
-                            dbService.allRequests.where((r) => r.status == 'pending').toList();
+                            dbService.allRequests
+                                .where((r) =>
+                                    r.status == 'pending' ||
+                                    (r.status == 'direct_pending' && r.targetWorkerId == worker.uid))
+                                .toList();
 
                         // Strictly filter so only requests matching the worker's skill are shown
                         final allPending = rawPending.where((r) => _matchesWorkerSkill(worker, r)).toList();
 
                         // Filter by 20 km if toggle is active and worker has location set
-                        final requests = (_filterWithin20Km && worker.hasLocation)
+                        // Direct requests sent to this worker are NEVER hidden by distance!
+                        final filteredByDistance = (_filterWithin20Km && worker.hasLocation)
                             ? allPending.where((r) {
+                                if (r.targetWorkerId == worker.uid) return true;
                                 if (!r.hasLocation) return true;
                                 final km = _getDistanceKm(worker, r);
                                 return km == null || km <= DatabaseService.maxWorkerDistanceKm;
                               }).toList()
                             : allPending;
+
+                        // Fallback: If 20 km filter produces 0 results but pending jobs exist,
+                        // fallback to showing allPending so worker is never left with an empty screen!
+                        final requests = (filteredByDistance.isEmpty && allPending.isNotEmpty && _filterWithin20Km)
+                            ? allPending
+                            : filteredByDistance;
 
                         return Column(
                           children: [

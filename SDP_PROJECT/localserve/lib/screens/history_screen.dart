@@ -25,17 +25,25 @@ class _HistoryScreenState extends State<HistoryScreen>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _showAllSystemRequests = false;
-
-  final List<String> _tabs = [
-    'All',
-    'Pending',
-    'Assigned',
-    'Completed',
-  ];
+  late final List<String> _tabs;
 
   @override
   void initState() {
     super.initState();
+    if (widget.currentUser.isWorker) {
+      _tabs = [
+        'All Jobs',
+        'Active',
+        'Completed',
+      ];
+    } else {
+      _tabs = [
+        'All',
+        'Pending',
+        'Assigned',
+        'Completed',
+      ];
+    }
     _tabController = TabController(length: _tabs.length, vsync: this);
   }
 
@@ -143,9 +151,9 @@ class _HistoryScreenState extends State<HistoryScreen>
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text(
-              'Service History',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            title: Text(
+              user.isWorker ? 'Job History' : 'Service History',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             actions: user.isWorker
                 ? null
@@ -182,12 +190,18 @@ class _HistoryScreenState extends State<HistoryScreen>
             bottom: TabBar(
               controller: _tabController,
               isScrollable: false,
-              tabs: [
-                Tab(text: 'All ($totalCount)'),
-                Tab(text: 'Pending ($pendingCount)'),
-                Tab(text: 'Assigned ($assignedCount)'),
-                Tab(text: 'Done ($completedCount)'),
-              ],
+              tabs: user.isWorker
+                  ? [
+                      Tab(text: 'All ($totalCount)'),
+                      Tab(text: 'Active ($assignedCount)'),
+                      Tab(text: 'Completed ($completedCount)'),
+                    ]
+                  : [
+                      Tab(text: 'All ($totalCount)'),
+                      Tab(text: 'Pending ($pendingCount)'),
+                      Tab(text: 'Assigned ($assignedCount)'),
+                      Tab(text: 'Done ($completedCount)'),
+                    ],
             ),
           ),
           body: Column(
@@ -284,72 +298,101 @@ class _HistoryScreenState extends State<HistoryScreen>
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
-                  children: [
-                    // TAB 1: ALL
-                    _buildRequestsList(filteredBySearch, theme, dbService),
+                  children: user.isWorker
+                      ? [
+                          // TAB 1: ALL JOBS
+                          _buildRequestsList(filteredBySearch, theme, dbService),
 
-                    // TAB 2: PENDING
-                    _buildRequestsList(
-                      filteredBySearch
-                          .where((r) => r.status.toLowerCase() == 'pending')
-                          .toList(),
-                      theme,
-                      dbService,
-                    ),
+                          // TAB 2: ACTIVE / IN PROGRESS
+                          _buildRequestsList(
+                            filteredBySearch
+                                .where((r) =>
+                                    r.status.toLowerCase() == 'assigned' ||
+                                    r.status.toLowerCase() == 'in_progress')
+                                .toList(),
+                            theme,
+                            dbService,
+                          ),
 
-                    // TAB 3: ASSIGNED / IN PROGRESS
-                    _buildRequestsList(
-                      filteredBySearch
-                          .where((r) =>
-                              r.status.toLowerCase() == 'assigned' ||
-                              r.status.toLowerCase() == 'in_progress')
-                          .toList(),
-                      theme,
-                      dbService,
-                    ),
+                          // TAB 3: COMPLETED
+                          _buildRequestsList(
+                            filteredBySearch
+                                .where((r) =>
+                                    r.completed ||
+                                    r.status.toLowerCase() == 'completed')
+                                .toList(),
+                            theme,
+                            dbService,
+                          ),
+                        ]
+                      : [
+                          // TAB 1: ALL
+                          _buildRequestsList(filteredBySearch, theme, dbService),
 
-                    // TAB 4: COMPLETED
-                    _buildRequestsList(
-                      filteredBySearch
-                          .where((r) =>
-                              r.completed ||
-                              r.status.toLowerCase() == 'completed')
-                          .toList(),
-                      theme,
-                      dbService,
-                    ),
-                  ],
+                          // TAB 2: PENDING
+                          _buildRequestsList(
+                            filteredBySearch
+                                .where((r) => r.status.toLowerCase() == 'pending')
+                                .toList(),
+                            theme,
+                            dbService,
+                          ),
+
+                          // TAB 3: ASSIGNED / IN PROGRESS
+                          _buildRequestsList(
+                            filteredBySearch
+                                .where((r) =>
+                                    r.status.toLowerCase() == 'assigned' ||
+                                    r.status.toLowerCase() == 'in_progress')
+                                .toList(),
+                            theme,
+                            dbService,
+                          ),
+
+                          // TAB 4: COMPLETED
+                          _buildRequestsList(
+                            filteredBySearch
+                                .where((r) =>
+                                    r.completed ||
+                                    r.status.toLowerCase() == 'completed')
+                                .toList(),
+                            theme,
+                            dbService,
+                          ),
+                        ],
                 ),
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () async {
-              final result = await Navigator.push<ServiceRequest>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ServiceRequestScreen(
-                    selectedService: 'General Service',
-                    currentUser: user,
-                  ),
-                ),
-              );
+          floatingActionButton: user.isWorker
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: () async {
+                    final result = await Navigator.push<ServiceRequest>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ServiceRequestScreen(
+                          selectedService: 'General Service',
+                          currentUser: user,
+                        ),
+                      ),
+                    );
 
-              if (result != null) {
-                await dbService.addRequest(result);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Service request added to history'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('New Request'),
-          ),
+                    if (result != null) {
+                      await dbService.addRequest(result);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Service request added to history'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Request'),
+                ),
         );
       },
     );
@@ -607,28 +650,42 @@ class _HistoryScreenState extends State<HistoryScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      TextButton.icon(
-                        icon: Icon(
-                          isCompleted
-                              ? Icons.replay
-                              : Icons.check_circle_outline,
-                          size: 16,
+                      if (!isCompleted)
+                        TextButton.icon(
+                          icon: const Icon(
+                            Icons.check_circle_outline,
+                            size: 16,
+                          ),
+                          label: const Text(
+                            'Mark Done',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          onPressed: () async {
+                            await dbService.updateStatus(
+                              requestId: req.id,
+                              newStatus: 'completed',
+                            );
+                          },
+                        )
+                      else if (!widget.currentUser.isWorker)
+                        TextButton.icon(
+                          icon: const Icon(
+                            Icons.replay,
+                            size: 16,
+                          ),
+                          label: const Text(
+                            'Mark Pending',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          onPressed: () async {
+                            await dbService.updateStatus(
+                              requestId: req.id,
+                              newStatus: 'pending',
+                            );
+                          },
                         ),
-                        label: Text(
-                          isCompleted ? 'Mark Pending' : 'Mark Done',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        onPressed: () async {
-                          final newStatus =
-                              isCompleted ? 'pending' : 'completed';
-                          await dbService.updateStatus(
-                            requestId: req.id,
-                            newStatus: newStatus,
-                          );
-                        },
-                      ),
                       const SizedBox(width: 8),
-                      if (req.canPay) ...[
+                      if (!widget.currentUser.isWorker && req.canPay) ...[
                         FilledButton.icon(
                           style: FilledButton.styleFrom(
                             backgroundColor: req.isPaymentFailed

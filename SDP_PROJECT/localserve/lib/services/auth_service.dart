@@ -312,6 +312,31 @@ class AuthService extends ChangeNotifier {
         } catch (fbErr) {
           debugPrint('Firebase signIn notice (falling back to local storage): $fbErr');
         }
+
+        // Check Firestore directly for user document by email (e.g. if registered on mobile device)
+        try {
+          final query = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: trimmedEmail)
+              .limit(1)
+              .get();
+          if (query.docs.isNotEmpty) {
+            final doc = query.docs.first;
+            final firestoreUser = AppUser.fromMap(doc.data(), uid: doc.id);
+            _currentUser = firestoreUser;
+            final idx = _registeredUsers.indexWhere((u) => u.uid == firestoreUser.uid || u.email.toLowerCase() == normalizedEmail);
+            if (idx != -1) {
+              _registeredUsers[idx] = firestoreUser;
+            } else {
+              _registeredUsers.add(firestoreUser);
+            }
+            await _storage.saveUser(firestoreUser, password: password);
+            await _storage.setActiveUserId(firestoreUser.uid);
+            return;
+          }
+        } catch (firestoreErr) {
+          debugPrint('Firestore signIn query note: $firestoreErr');
+        }
       }
 
       throw Exception('No account found for "$trimmedEmail". Please register first.');
@@ -494,7 +519,7 @@ class AuthService extends ChangeNotifier {
         if (updated.avatarUrl != null) {
           firestoreMap['avatarUrl'] = updated.avatarUrl;
         }
-        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update(firestoreMap);
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).set(firestoreMap, SetOptions(merge: true));
       } catch (e) {
         debugPrint('Error updating user profile in Firestore: $e');
       }
@@ -530,11 +555,11 @@ class AuthService extends ChangeNotifier {
 
     if (_isFirebaseInitialized) {
       try {
-        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update({
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).set({
           'latitude': latitude,
           'longitude': longitude,
           'address': address,
-        });
+        }, SetOptions(merge: true));
       } catch (e) {
         debugPrint('Error updating user location in Firestore: $e');
       }
@@ -574,12 +599,12 @@ class AuthService extends ChangeNotifier {
 
     if (_isFirebaseInitialized) {
       try {
-        await FirebaseFirestore.instance.collection('users').doc(updated.uid).update({
+        await FirebaseFirestore.instance.collection('users').doc(updated.uid).set({
           'membershipPlan': planId,
           'membershipTier': tierName,
           'membershipExpiresAt': expiresAt.toIso8601String(),
           'isProMember': isPro,
-        });
+        }, SetOptions(merge: true));
       } catch (e) {
         debugPrint('Error updating user membership in Firestore: $e');
       }

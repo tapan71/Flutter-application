@@ -564,6 +564,72 @@ class DatabaseService extends ChangeNotifier {
     _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
     _mockReviewsStreamController.add(List.unmodifiable(_mockReviews));
     notifyListeners();
+
+    if (_isFirebaseInitialized) {
+      unawaited(_syncFromFirebase());
+    }
+  }
+
+  /// Background sync to fetch remote documents from Firebase server and populate local server
+  Future<void> _syncFromFirebase() async {
+    try {
+      // 1. Sync users from Firestore to local server
+      final usersSnap = await FirebaseFirestore.instance.collection('users').get();
+      final firestoreUsers = <AppUser>[];
+      for (final doc in usersSnap.docs) {
+        final u = AppUser.fromMap(doc.data(), uid: doc.id);
+        firestoreUsers.add(u);
+        final idx = _mockUsers.indexWhere((m) => m.uid == u.uid);
+        if (idx != -1) {
+          _mockUsers[idx] = u;
+        } else {
+          _mockUsers.add(u);
+        }
+      }
+      if (firestoreUsers.isNotEmpty) {
+        await _storage.saveUsersBatch(firestoreUsers);
+      }
+
+      // 2. Sync service requests from Firestore to local server
+      final reqsSnap = await FirebaseFirestore.instance.collection('service_requests').get();
+      final firestoreReqs = <ServiceRequest>[];
+      for (final doc in reqsSnap.docs) {
+        final r = ServiceRequest.fromMap(doc.data(), id: doc.id);
+        firestoreReqs.add(r);
+        final idx = _mockRequests.indexWhere((m) => m.id == r.id);
+        if (idx != -1) {
+          _mockRequests[idx] = r;
+        } else {
+          _mockRequests.add(r);
+        }
+      }
+      if (firestoreReqs.isNotEmpty) {
+        await _storage.saveRequestsBatch(firestoreReqs);
+        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+      }
+
+      // 3. Sync reviews from Firestore to local server
+      final revsSnap = await FirebaseFirestore.instance.collection('reviews').get();
+      final firestoreRevs = <Review>[];
+      for (final doc in revsSnap.docs) {
+        final rev = Review.fromMap(doc.data(), id: doc.id);
+        firestoreRevs.add(rev);
+        final idx = _mockReviews.indexWhere((m) => m.id == rev.id);
+        if (idx != -1) {
+          _mockReviews[idx] = rev;
+        } else {
+          _mockReviews.add(rev);
+        }
+      }
+      if (firestoreRevs.isNotEmpty) {
+        await _storage.saveReviewsBatch(firestoreRevs);
+        _mockReviewsStreamController.add(List.unmodifiable(_mockReviews));
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Firestore background sync notice: $e');
+    }
   }
 
   // Look up user details by ID
@@ -599,15 +665,32 @@ class DatabaseService extends ChangeNotifier {
       return FirebaseFirestore.instance
           .collection('service_requests')
           .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
-              .where((r) =>
-                  r.customerId == customerId ||
+          .map((snapshot) {
+            final firestoreList = snapshot.docs
+                .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+                .where((r) =>
+                    r.customerId == customerId ||
+                    (customerEmail != null &&
+                        customerEmail.isNotEmpty &&
+                        r.email.trim().toLowerCase() ==
+                            customerEmail.trim().toLowerCase()))
+                .toList();
+
+            final map = <String, ServiceRequest>{};
+            for (final r in firestoreList) {
+              map[r.id] = r;
+            }
+            for (final r in _mockRequests) {
+              if (r.customerId == customerId ||
                   (customerEmail != null &&
                       customerEmail.isNotEmpty &&
                       r.email.trim().toLowerCase() ==
-                          customerEmail.trim().toLowerCase()))
-              .toList());
+                          customerEmail.trim().toLowerCase())) {
+                map.putIfAbsent(r.id, () => r);
+              }
+            }
+            return map.values.toList();
+          });
     } else {
       return Stream<List<ServiceRequest>>.multi((controller) {
         controller.add(getCustomerRequests(customerId, customerEmail: customerEmail));
@@ -619,7 +702,7 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  Stream<List<ServiceRequest>> streamAvailableRequests({String? skill}) {
+  Stream<List<ServiceRequest>> streamAvailableRequests({String? skill, String? workerId}) {
     final skillFilter = (skill != null &&
             skill.trim().isNotEmpty &&
             skill.trim().toLowerCase() != 'general service' &&
@@ -627,29 +710,70 @@ class DatabaseService extends ChangeNotifier {
         ? skill.trim().toLowerCase()
         : null;
 
+    bool matchesSkill(String service) {
+      if (skillFilter == null) return true;
+      final reqService = service.trim().toLowerCase();
+      if (reqService == 'general service' || reqService == 'general') return true;
+      if (reqService == skillFilter) return true;
+      if (reqService.contains(skillFilter) || skillFilter.contains(reqService)) return true;
+      if (reqService.contains('plumb') && skillFilter.contains('plumb')) return true;
+      if (reqService.contains('electr') && skillFilter.contains('electr')) return true;
+      if (reqService.contains('carpent') && skillFilter.contains('carpent')) return true;
+      if (reqService.contains('paint') && skillFilter.contains('paint')) return true;
+      if (reqService.contains('clean') && skillFilter.contains('clean')) return true;
+      if (reqService.contains('appliance') && skillFilter.contains('appliance')) return true;
+      return false;
+    }
+
     if (_isFirebaseInitialized) {
       return FirebaseFirestore.instance
           .collection('service_requests')
-          .where('status', isEqualTo: 'pending')
           .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
-              .where((r) {
-                if (skillFilter == null) return true;
-                final reqService = r.service.trim().toLowerCase();
-                if (reqService == 'general service' || reqService == 'general') return true;
-                return reqService == skillFilter;
-              })
-              .toList());
+          .map((snapshot) {
+            final firestoreList = snapshot.docs
+                .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+                .where((r) {
+                  if (workerId != null &&
+                      workerId.isNotEmpty &&
+                      r.targetWorkerId == workerId &&
+                      (r.status == 'direct_pending' || r.status == 'pending')) {
+                    return true;
+                  }
+                  final isAvailable = (r.status == 'pending' && (r.targetWorkerId == null || r.targetWorkerId!.isEmpty));
+                  if (!isAvailable) return false;
+                  return matchesSkill(r.service);
+                })
+                .toList();
+
+            final map = <String, ServiceRequest>{};
+            for (final r in firestoreList) {
+              map[r.id] = r;
+            }
+            for (final r in _mockRequests) {
+              final isTargeted = workerId != null &&
+                  workerId.isNotEmpty &&
+                  r.targetWorkerId == workerId &&
+                  (r.status == 'direct_pending' || r.status == 'pending');
+              final isAvailable = (r.status == 'pending' && (r.targetWorkerId == null || r.targetWorkerId!.isEmpty));
+              if (isTargeted || (isAvailable && matchesSkill(r.service))) {
+                map.putIfAbsent(r.id, () => r);
+              }
+            }
+            return map.values.toList();
+          });
     } else {
       return Stream<List<ServiceRequest>>.multi((controller) {
         List<ServiceRequest> filter(List<ServiceRequest> list) {
           return list.where((r) {
-            if (r.status != 'pending') return false;
-            if (skillFilter == null) return true;
-            final reqService = r.service.trim().toLowerCase();
-            if (reqService == 'general service' || reqService == 'general') return true;
-            return reqService == skillFilter;
+            if (workerId != null &&
+                workerId.isNotEmpty &&
+                r.targetWorkerId == workerId &&
+                (r.status == 'direct_pending' || r.status == 'pending')) {
+              return true;
+            }
+            final isAvailable = (r.status == 'pending' && (r.targetWorkerId == null || r.targetWorkerId!.isEmpty));
+            if (!isAvailable) return false;
+            return matchesSkill(r.service);
           }).toList();
         }
 
@@ -671,24 +795,37 @@ class DatabaseService extends ChangeNotifier {
           .collection('service_requests')
           .where('workerId', isEqualTo: workerId)
           .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
-              .where((r) {
-                final user = _mockUsers.cast<AppUser?>().firstWhere(
-                      (u) => u?.uid == workerId,
-                      orElse: () => _defaultUsers.cast<AppUser?>().firstWhere(
-                            (u) => u?.uid == workerId,
-                            orElse: () => null,
-                          ),
-                    );
-                final skill = user?.workerSkill?.trim().toLowerCase();
-                if (skill == null || skill.isEmpty || skill == 'general service' || skill == 'all') {
-                  return true;
-                }
-                final reqService = r.service.trim().toLowerCase();
-                return reqService == skill || reqService == 'general service' || reqService == 'general';
-              })
-              .toList());
+          .map((snapshot) {
+            final firestoreList = snapshot.docs
+                .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+                .where((r) {
+                  final user = _mockUsers.cast<AppUser?>().firstWhere(
+                        (u) => u?.uid == workerId,
+                        orElse: () => _defaultUsers.cast<AppUser?>().firstWhere(
+                              (u) => u?.uid == workerId,
+                              orElse: () => null,
+                            ),
+                      );
+                  final skill = user?.workerSkill?.trim().toLowerCase();
+                  if (skill == null || skill.isEmpty || skill == 'general service' || skill == 'all') {
+                    return true;
+                  }
+                  final reqService = r.service.trim().toLowerCase();
+                  return reqService == skill || reqService == 'general service' || reqService == 'general';
+                })
+                .toList();
+
+            final map = <String, ServiceRequest>{};
+            for (final r in firestoreList) {
+              map[r.id] = r;
+            }
+            for (final r in _mockRequests) {
+              if (r.workerId == workerId) {
+                map.putIfAbsent(r.id, () => r);
+              }
+            }
+            return map.values.toList();
+          });
     } else {
       return Stream<List<ServiceRequest>>.multi((controller) {
         List<ServiceRequest> filter(List<ServiceRequest> list) {
@@ -760,9 +897,19 @@ class DatabaseService extends ChangeNotifier {
           .where('userId', isEqualTo: userId)
           .snapshots()
           .map((snapshot) {
-        final list = snapshot.docs
+        final firestoreList = snapshot.docs
             .map((doc) => AppNotification.fromMap(doc.data(), id: doc.id))
             .toList();
+        final map = <String, AppNotification>{};
+        for (final n in firestoreList) {
+          map[n.id] = n;
+        }
+        for (final n in _mockNotifications) {
+          if (n.userId == userId) {
+            map.putIfAbsent(n.id, () => n);
+          }
+        }
+        final list = map.values.toList();
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
       });
@@ -802,41 +949,53 @@ class DatabaseService extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
+    // 1. Write to local storage & in-memory state
+    _mockNotifications.insert(0, notif);
+    await _storage.saveNotification(notif);
+    _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
+    notifyListeners();
+
+    // 2. Write to Firebase server
     if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(notif.id)
-          .set(notif.toMap());
-    } else {
-      _mockNotifications.insert(0, notif);
-      await _storage.saveNotification(notif);
-      _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
-      notifyListeners();
+      try {
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(notif.id)
+            .set(notif.toMap());
+      } catch (e) {
+        debugPrint('Error saving notification in Firestore: $e');
+      }
     }
   }
 
   Future<void> markNotificationsAsRead(String userId) async {
-    if (_isFirebaseInitialized) {
-      final batch = FirebaseFirestore.instance.batch();
-      final docs = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('userId', isEqualTo: userId)
-          .where('isRead', isEqualTo: false)
-          .get();
+    // 1. Update local storage & in-memory
+    for (int i = 0; i < _mockNotifications.length; i++) {
+      if (_mockNotifications[i].userId == userId) {
+        _mockNotifications[i] = _mockNotifications[i].copyWith(isRead: true);
+      }
+    }
+    await _storage.markNotificationsRead(userId);
+    _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
+    notifyListeners();
 
-      for (final doc in docs.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-      await batch.commit();
-    } else {
-      for (int i = 0; i < _mockNotifications.length; i++) {
-        if (_mockNotifications[i].userId == userId) {
-          _mockNotifications[i] = _mockNotifications[i].copyWith(isRead: true);
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        final batch = FirebaseFirestore.instance.batch();
+        final docs = await FirebaseFirestore.instance
+            .collection('notifications')
+            .where('userId', isEqualTo: userId)
+            .where('isRead', isEqualTo: false)
+            .get();
+
+        for (final doc in docs.docs) {
+          batch.update(doc.reference, {'isRead': true});
         }
+        await batch.commit();
+      } catch (e) {
+        debugPrint('Error marking notifications read in Firestore: $e');
       }
-      await _storage.markNotificationsRead(userId);
-      _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
-      notifyListeners();
     }
   }
 
@@ -844,12 +1003,25 @@ class DatabaseService extends ChangeNotifier {
       markNotificationsAsRead(userId);
 
   Future<void> markNotificationAsRead(String notificationId) async {
+    // 1. Update local storage & in-memory
     final idx = _mockNotifications.indexWhere((n) => n.id == notificationId);
     if (idx != -1) {
       _mockNotifications[idx] = _mockNotifications[idx].copyWith(isRead: true);
       await _storage.saveNotification(_mockNotifications[idx]);
       _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
       notifyListeners();
+    }
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(notificationId)
+            .update({'isRead': true});
+      } catch (e) {
+        debugPrint('Error marking notification read in Firestore: $e');
+      }
     }
   }
 
@@ -868,9 +1040,19 @@ class DatabaseService extends ChangeNotifier {
           .where('toUserId', isEqualTo: userId)
           .snapshots()
           .map((snapshot) {
-        final list = snapshot.docs
+        final firestoreList = snapshot.docs
             .map((doc) => Review.fromMap(doc.data(), id: doc.id))
             .toList();
+        final map = <String, Review>{};
+        for (final rev in firestoreList) {
+          map[rev.id] = rev;
+        }
+        for (final rev in _mockReviews) {
+          if (rev.toUserId == userId) {
+            map.putIfAbsent(rev.id, () => rev);
+          }
+        }
+        final list = map.values.toList();
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
       });
@@ -892,71 +1074,74 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> submitReview(Review review) async {
+    // 1. Write to local storage & in-memory state
+    _mockReviews.insert(0, review);
+    await _storage.saveReview(review);
+    _mockReviewsStreamController.add(List.unmodifiable(_mockReviews));
+
+    // Update Service Request review flag locally
+    final reqIdx = _mockRequests.indexWhere((r) => r.id == review.requestId);
+    if (reqIdx != -1) {
+      final updated = review.fromUserRole == 'customer'
+          ? _mockRequests[reqIdx].copyWith(customerReviewed: true)
+          : _mockRequests[reqIdx].copyWith(workerReviewed: true);
+      _mockRequests[reqIdx] = updated;
+      await _storage.saveRequest(updated);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    }
+
+    // Update recipient user rating metrics locally
+    final userIdx = _mockUsers.indexWhere((u) => u.uid == review.toUserId);
+    if (userIdx != -1) {
+      final existing = _mockReviews.where((r) => r.toUserId == review.toUserId).toList();
+      final double avg = existing.fold<double>(0.0, (acc, r) => acc + r.rating) / existing.length;
+      final updatedUser = _mockUsers[userIdx].copyWith(
+        rating: double.parse(avg.toStringAsFixed(1)),
+        ratingCount: existing.length,
+        completedJobsCount: _mockUsers[userIdx].completedJobsCount + 1,
+      );
+      _mockUsers[userIdx] = updatedUser;
+      await _storage.saveUser(updatedUser);
+    }
+    notifyListeners();
+
+    // 2. Write to Firebase server
     if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('reviews')
-          .doc(review.id)
-          .set(review.toMap());
+      try {
+        await FirebaseFirestore.instance
+            .collection('reviews')
+            .doc(review.id)
+            .set(review.toMap());
 
-      // Mark request reviewed
-      final fieldToUpdate = review.fromUserRole == 'customer'
-          ? {'customerReviewed': true}
-          : {'workerReviewed': true};
+        final fieldToUpdate = review.fromUserRole == 'customer'
+            ? {'customerReviewed': true}
+            : {'workerReviewed': true};
 
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(review.requestId)
-          .update(fieldToUpdate);
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(review.requestId)
+            .update(fieldToUpdate);
 
-      // Recalculate recipient rating
-      final allRevs = await FirebaseFirestore.instance
-          .collection('reviews')
-          .where('toUserId', isEqualTo: review.toUserId)
-          .get();
+        final allRevs = await FirebaseFirestore.instance
+            .collection('reviews')
+            .where('toUserId', isEqualTo: review.toUserId)
+            .get();
 
-      if (allRevs.docs.isNotEmpty) {
-        final ratings = allRevs.docs
-            .map((d) => (d.data()['rating'] as num?)?.toDouble() ?? 5.0)
-            .toList();
-        final double avg = ratings.reduce((a, b) => a + b) / ratings.length;
+        if (allRevs.docs.isNotEmpty) {
+          final ratings = allRevs.docs
+              .map((d) => (d.data()['rating'] as num?)?.toDouble() ?? 5.0)
+              .toList();
+          final double avg = ratings.reduce((a, b) => a + b) / ratings.length;
 
-        await FirebaseFirestore.instance.collection('users').doc(review.toUserId).update({
-          'rating': double.parse(avg.toStringAsFixed(1)),
-          'ratingCount': ratings.length,
-          'completedJobsCount': FieldValue.increment(1),
-        });
+          await FirebaseFirestore.instance.collection('users').doc(review.toUserId).update({
+            'rating': double.parse(avg.toStringAsFixed(1)),
+            'ratingCount': ratings.length,
+            'completedJobsCount': FieldValue.increment(1),
+          });
+        }
+      } catch (e) {
+        debugPrint('Error saving review to Firestore: $e');
       }
-    } else {
-      _mockReviews.insert(0, review);
-      await _storage.saveReview(review);
-      _mockReviewsStreamController.add(List.unmodifiable(_mockReviews));
-
-      // Update Service Request review flag
-      final reqIdx = _mockRequests.indexWhere((r) => r.id == review.requestId);
-      if (reqIdx != -1) {
-        final updated = review.fromUserRole == 'customer'
-            ? _mockRequests[reqIdx].copyWith(customerReviewed: true)
-            : _mockRequests[reqIdx].copyWith(workerReviewed: true);
-        _mockRequests[reqIdx] = updated;
-        await _storage.saveRequest(updated);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-      }
-
-      // Update recipient user rating metrics
-      final userIdx = _mockUsers.indexWhere((u) => u.uid == review.toUserId);
-      if (userIdx != -1) {
-        final existing = _mockReviews.where((r) => r.toUserId == review.toUserId).toList();
-        final double avg = existing.fold<double>(0.0, (acc, r) => acc + r.rating) / existing.length;
-        final updatedUser = _mockUsers[userIdx].copyWith(
-          rating: double.parse(avg.toStringAsFixed(1)),
-          ratingCount: existing.length,
-          completedJobsCount: _mockUsers[userIdx].completedJobsCount + 1,
-        );
-        _mockUsers[userIdx] = updatedUser;
-        await _storage.saveUser(updatedUser);
-      }
-
-      notifyListeners();
     }
 
     // Send Notification to recipient
@@ -974,47 +1159,62 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> addRequest(ServiceRequest request) async {
     final newReq = request.copyWith(status: request.status.isEmpty ? 'pending' : request.status);
+    _mockRequests.removeWhere((r) => r.id == newReq.id);
+    _mockRequests.insert(0, newReq);
+    await _storage.saveRequest(newReq);
+    _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    notifyListeners();
+
     if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(newReq.id)
-          .set(newReq.toMap());
-    } else {
-      _mockRequests.insert(0, newReq);
-      await _storage.saveRequest(newReq);
-      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-      notifyListeners();
+      try {
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(newReq.id)
+            .set(newReq.toMap());
+      } catch (e) {
+        debugPrint('Error saving request to Firestore: $e');
+      }
     }
   }
 
   Future<void> updateRequest(ServiceRequest request) async {
-    if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(request.id)
-          .update(request.toMap());
+    final index = _mockRequests.indexWhere((r) => r.id == request.id);
+    if (index != -1) {
+      _mockRequests[index] = request;
     } else {
-      final index = _mockRequests.indexWhere((r) => r.id == request.id);
-      if (index != -1) {
-        _mockRequests[index] = request;
-        await _storage.saveRequest(request);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      _mockRequests.insert(0, request);
+    }
+    await _storage.saveRequest(request);
+    _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    notifyListeners();
+
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(request.id)
+            .set(request.toMap(), SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error updating request in Firestore: $e');
       }
     }
   }
 
   Future<void> deleteRequest(String requestId) async {
+    _mockRequests.removeWhere((r) => r.id == requestId);
+    await _storage.deleteRequest(requestId);
+    _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    notifyListeners();
+
     if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(requestId)
-          .delete();
-    } else {
-      _mockRequests.removeWhere((r) => r.id == requestId);
-      await _storage.deleteRequest(requestId);
-      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-      notifyListeners();
+      try {
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(requestId)
+            .delete();
+      } catch (e) {
+        debugPrint('Error deleting request in Firestore: $e');
+      }
     }
   }
 
@@ -1025,30 +1225,44 @@ class DatabaseService extends ChangeNotifier {
   }) async {
     ServiceRequest? targetReq;
 
+    // 1. Update local storage & in-memory state
+    final index = _mockRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      targetReq = _mockRequests[index];
+      final updated = _mockRequests[index].copyWith(
+        status: 'cancelled',
+        completed: false,
+      );
+      _mockRequests[index] = updated;
+      await _storage.saveRequest(updated);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+      notifyListeners();
+    }
+
+    // 2. Update Firebase server
     if (_isFirebaseInitialized) {
-      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
-      if (doc.exists && doc.data() != null) {
-        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
-      }
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(requestId)
-          .update({
-        'status': 'cancelled',
-        'completed': false,
-      });
-    } else {
-      final index = _mockRequests.indexWhere((r) => r.id == requestId);
-      if (index != -1) {
-        targetReq = _mockRequests[index];
-        final updated = _mockRequests[index].copyWith(
-          status: 'cancelled',
-          completed: false,
-        );
-        _mockRequests[index] = updated;
-        await _storage.saveRequest(updated);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      try {
+        if (targetReq == null) {
+          final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+          if (doc.exists && doc.data() != null) {
+            targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+            final updated = targetReq.copyWith(status: 'cancelled', completed: false);
+            _mockRequests.removeWhere((r) => r.id == requestId);
+            _mockRequests.insert(0, updated);
+            await _storage.saveRequest(updated);
+            _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+            notifyListeners();
+          }
+        }
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(requestId)
+            .update({
+          'status': 'cancelled',
+          'completed': false,
+        });
+      } catch (e) {
+        debugPrint('Error cancelling request in Firestore: $e');
       }
     }
 
@@ -1117,102 +1331,126 @@ class DatabaseService extends ChangeNotifier {
       }
 
       if (worker.workerSkill != null && worker.workerSkill!.isNotEmpty && targetReq != null) {
-        final workerSkill = worker.workerSkill!.trim().toLowerCase();
-        final reqService = targetReq.service.trim().toLowerCase();
-        if (workerSkill != 'general service' && workerSkill != 'all') {
-          if (reqService.isNotEmpty &&
-              reqService != 'general service' &&
-              reqService != 'general' &&
-              reqService != workerSkill) {
-            throw Exception(
-              'Specialization mismatch: Your profile is registered as $workerSkill and cannot accept $reqService requests.',
-            );
+        final isDirect = targetReq.targetWorkerId == worker.uid;
+        if (!isDirect) {
+          final workerSkill = worker.workerSkill!.trim().toLowerCase();
+          final reqService = targetReq.service.trim().toLowerCase();
+          if (workerSkill != 'general service' && workerSkill != 'all') {
+            final matches = reqService.isEmpty ||
+                reqService == 'general service' ||
+                reqService == 'general' ||
+                reqService == workerSkill ||
+                reqService.contains(workerSkill) ||
+                workerSkill.contains(reqService) ||
+                (reqService.contains('plumb') && workerSkill.contains('plumb')) ||
+                (reqService.contains('electr') && workerSkill.contains('electr')) ||
+                (reqService.contains('carpent') && workerSkill.contains('carpent')) ||
+                (reqService.contains('paint') && workerSkill.contains('paint')) ||
+                (reqService.contains('clean') && workerSkill.contains('clean')) ||
+                (reqService.contains('appliance') && workerSkill.contains('appliance'));
+
+            if (!matches) {
+              throw Exception(
+                'Specialization mismatch: Your profile is registered as ${worker.workerSkill} and cannot accept $reqService requests.',
+              );
+            }
           }
         }
       }
     }
 
-    ServiceRequest? target;
-    if (_isFirebaseInitialized) {
-      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
-      if (doc.exists && doc.data() != null) {
-        target = ServiceRequest.fromMap(doc.data()!, id: doc.id);
-      }
+    ServiceRequest? target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          target = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
 
-      if (target != null && target.status != 'pending') {
-        throw Exception('This job has already been confirmed and assigned to another worker.');
-      }
+    if (target == null) throw Exception('Request not found.');
 
-      if (autoConfirm) {
-        await FirebaseFirestore.instance
-            .collection('service_requests')
-            .doc(requestId)
-            .update({
-          'workerId': workerId,
-          'workerName': workerName,
-          'status': 'assigned',
-        });
-      } else {
-        await FirebaseFirestore.instance
-            .collection('service_requests')
-            .doc(requestId)
-            .update({
-          'applicantWorkerIds': FieldValue.arrayUnion([workerId]),
-        });
-      }
+    final isDirectForThisWorker = target.status == 'direct_pending' && target.targetWorkerId == workerId;
+    if (target.status != 'pending' && !isDirectForThisWorker) {
+      throw Exception('This job has already been confirmed and assigned to another worker.');
+    }
+
+    // 1. Update local storage & in-memory state
+    final ServiceRequest updatedReq;
+    if (autoConfirm || isDirectForThisWorker) {
+      updatedReq = target.copyWith(
+        workerId: workerId,
+        workerName: workerName,
+        status: 'assigned',
+      );
     } else {
-      final index = _mockRequests.indexWhere((r) => r.id == requestId);
-      if (index != -1) {
-        target = _mockRequests[index];
-        if (target.status != 'pending') {
-          throw Exception('This job has already been confirmed and assigned to another worker.');
-        }
+      final updatedApplicants = List<String>.from(target.applicantWorkerIds);
+      if (!updatedApplicants.contains(workerId)) {
+        updatedApplicants.add(workerId);
+      }
+      updatedReq = target.copyWith(applicantWorkerIds: updatedApplicants);
+    }
 
-        if (autoConfirm) {
-          final updated = _mockRequests[index].copyWith(
-            workerId: workerId,
-            workerName: workerName,
-            status: 'assigned',
-          );
-          _mockRequests[index] = updated;
-          await _storage.saveRequest(updated);
+    final index = _mockRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      _mockRequests[index] = updatedReq;
+    } else {
+      _mockRequests.insert(0, updatedReq);
+    }
+    await _storage.saveRequest(updatedReq);
+    _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    notifyListeners();
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        if (autoConfirm || isDirectForThisWorker) {
+          await FirebaseFirestore.instance
+              .collection('service_requests')
+              .doc(requestId)
+              .update({
+            'workerId': workerId,
+            'workerName': workerName,
+            'status': 'assigned',
+          });
         } else {
-          final updatedApplicants = List<String>.from(_mockRequests[index].applicantWorkerIds);
-          if (!updatedApplicants.contains(workerId)) {
-            updatedApplicants.add(workerId);
-          }
-          final updated = _mockRequests[index].copyWith(
-            applicantWorkerIds: updatedApplicants,
-          );
-          _mockRequests[index] = updated;
-          await _storage.saveRequest(updated);
+          await FirebaseFirestore.instance
+              .collection('service_requests')
+              .doc(requestId)
+              .update({
+            'applicantWorkerIds': FieldValue.arrayUnion([workerId]),
+          });
         }
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      } catch (e) {
+        debugPrint('Error updating accepted job in Firestore: $e');
       }
     }
 
-    if (target != null) {
-      if (target.customerId != null && target.customerId!.isNotEmpty) {
-        await sendNotification(
-          userId: target.customerId!,
-          title: 'Worker Applied!',
-          message: '$workerName wants to do your ${target.service} job! Review their profile and confirm.',
-          type: 'worker_applied',
-          requestId: requestId,
-          relatedUserId: workerId,
-        );
-      }
-
+    final isDirectAccepted = target.status == 'direct_pending' && target.targetWorkerId == workerId;
+    if (target.customerId != null && target.customerId!.isNotEmpty) {
       await sendNotification(
-        userId: workerId,
-        title: 'Application Sent!',
-        message: 'You applied for ${target.name}\'s ${target.service} request. Waiting for customer confirmation.',
-        type: 'worker_applied',
+        userId: target.customerId!,
+        title: isDirectAccepted ? 'Direct Request Accepted! 🎉' : 'Worker Applied!',
+        message: isDirectAccepted
+            ? '$workerName accepted your direct request for ${target.service}! Work is scheduled.'
+            : '$workerName wants to do your ${target.service} job! Review their profile and confirm.',
+        type: isDirectAccepted ? 'direct_request_accepted' : 'worker_applied',
         requestId: requestId,
-        relatedUserId: target.customerId,
+        relatedUserId: workerId,
       );
     }
+
+    await sendNotification(
+      userId: workerId,
+      title: isDirectAccepted ? 'Job Confirmed! 🎉' : 'Application Sent!',
+      message: isDirectAccepted
+          ? 'You accepted the direct request for ${target.name}\'s ${target.service}. Work is scheduled.'
+          : 'You applied for ${target.name}\'s ${target.service} request. Waiting for customer confirmation.',
+      type: isDirectAccepted ? 'job_assigned' : 'worker_applied',
+      requestId: requestId,
+      relatedUserId: target.customerId,
+    );
   }
 
   /// Customer confirms an applicant worker.
@@ -1222,32 +1460,44 @@ class DatabaseService extends ChangeNotifier {
     required String workerName,
     String? customerId,
   }) async {
-    ServiceRequest? targetReq;
+    ServiceRequest? targetReq = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (targetReq == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
 
-    if (_isFirebaseInitialized) {
-      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
-      if (doc.exists && doc.data() != null) {
-        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
-      }
-
-      await FirebaseFirestore.instance.collection('service_requests').doc(requestId).update({
-        'workerId': workerId,
-        'workerName': workerName,
-        'status': 'assigned',
-      });
-    } else {
+    // 1. Update local storage & in-memory state
+    if (targetReq != null) {
+      final updated = targetReq.copyWith(
+        workerId: workerId,
+        workerName: workerName,
+        status: 'assigned',
+      );
       final index = _mockRequests.indexWhere((r) => r.id == requestId);
       if (index != -1) {
-        targetReq = _mockRequests[index];
-        final updated = _mockRequests[index].copyWith(
-          workerId: workerId,
-          workerName: workerName,
-          status: 'assigned',
-        );
         _mockRequests[index] = updated;
-        await _storage.saveRequest(updated);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      } else {
+        _mockRequests.insert(0, updated);
+      }
+      await _storage.saveRequest(updated);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+      notifyListeners();
+    }
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance.collection('service_requests').doc(requestId).update({
+          'workerId': workerId,
+          'workerName': workerName,
+          'status': 'assigned',
+        });
+      } catch (e) {
+        debugPrint('Error confirming worker in Firestore: $e');
       }
     }
 
@@ -1279,34 +1529,46 @@ class DatabaseService extends ChangeNotifier {
     required String requestId,
     required String workerId,
   }) async {
-    ServiceRequest? targetReq;
+    ServiceRequest? targetReq = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (targetReq == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
 
-    if (_isFirebaseInitialized) {
-      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
-      if (doc.exists && doc.data() != null) {
-        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
-      }
+    // 1. Update local storage & in-memory state
+    if (targetReq != null) {
+      final applicants = List<String>.from(targetReq.applicantWorkerIds)..remove(workerId);
+      final declined = List<String>.from(targetReq.declinedWorkerIds);
+      if (!declined.contains(workerId)) declined.add(workerId);
 
-      await FirebaseFirestore.instance.collection('service_requests').doc(requestId).update({
-        'applicantWorkerIds': FieldValue.arrayRemove([workerId]),
-        'declinedWorkerIds': FieldValue.arrayUnion([workerId]),
-      });
-    } else {
+      final updated = targetReq.copyWith(
+        applicantWorkerIds: applicants,
+        declinedWorkerIds: declined,
+      );
       final index = _mockRequests.indexWhere((r) => r.id == requestId);
       if (index != -1) {
-        targetReq = _mockRequests[index];
-        final applicants = List<String>.from(_mockRequests[index].applicantWorkerIds)..remove(workerId);
-        final declined = List<String>.from(_mockRequests[index].declinedWorkerIds);
-        if (!declined.contains(workerId)) declined.add(workerId);
-
-        final updated = _mockRequests[index].copyWith(
-          applicantWorkerIds: applicants,
-          declinedWorkerIds: declined,
-        );
         _mockRequests[index] = updated;
-        await _storage.saveRequest(updated);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      } else {
+        _mockRequests.insert(0, updated);
+      }
+      await _storage.saveRequest(updated);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+      notifyListeners();
+    }
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance.collection('service_requests').doc(requestId).update({
+          'applicantWorkerIds': FieldValue.arrayRemove([workerId]),
+          'declinedWorkerIds': FieldValue.arrayUnion([workerId]),
+        });
+      } catch (e) {
+        debugPrint('Error declining worker in Firestore: $e');
       }
     }
 
@@ -1325,31 +1587,45 @@ class DatabaseService extends ChangeNotifier {
     required String requestId,
     required String newStatus,
   }) async {
-    ServiceRequest? targetReq;
-    if (_isFirebaseInitialized) {
-      final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
-      if (doc.exists && doc.data() != null) {
-        targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
-      }
-      await FirebaseFirestore.instance
-          .collection('service_requests')
-          .doc(requestId)
-          .update({
-        'status': newStatus,
-        'completed': newStatus == 'completed',
-      });
-    } else {
+    ServiceRequest? targetReq = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (targetReq == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          targetReq = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
+
+    // 1. Update local storage & in-memory state
+    if (targetReq != null) {
+      final updated = targetReq.copyWith(
+        status: newStatus,
+        completed: newStatus == 'completed',
+      );
       final index = _mockRequests.indexWhere((r) => r.id == requestId);
       if (index != -1) {
-        targetReq = _mockRequests[index];
-        final updated = _mockRequests[index].copyWith(
-          status: newStatus,
-          completed: newStatus == 'completed',
-        );
         _mockRequests[index] = updated;
-        await _storage.saveRequest(updated);
-        _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
-        notifyListeners();
+      } else {
+        _mockRequests.insert(0, updated);
+      }
+      await _storage.saveRequest(updated);
+      _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+      notifyListeners();
+    }
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('service_requests')
+            .doc(requestId)
+            .update({
+          'status': newStatus,
+          'completed': newStatus == 'completed',
+        });
+      } catch (e) {
+        debugPrint('Error updating status in Firestore: $e');
       }
     }
 
@@ -1566,25 +1842,11 @@ class DatabaseService extends ChangeNotifier {
     String? bio,
     String? avatarUrl,
   }) async {
-    if (_isFirebaseInitialized) {
-      final Map<String, dynamic> firestoreMap = {
-        'name': name,
-        'mobile': mobile,
-        'address': address,
-        'latitude': latitude,
-        'longitude': longitude,
-        'workerSkill': workerSkill,
-        'bio': bio,
-      };
-      if (avatarUrl != null) {
-        firestoreMap['avatarUrl'] = avatarUrl;
-      }
-      await FirebaseFirestore.instance.collection('users').doc(uid).update(firestoreMap);
-    }
-
+    // 1. Update local storage & in-memory
     final index = _mockUsers.indexWhere((u) => u.uid == uid);
+    final AppUser updated;
     if (index != -1) {
-      final updated = _mockUsers[index].copyWith(
+      updated = _mockUsers[index].copyWith(
         name: name,
         mobile: mobile,
         address: address,
@@ -1595,8 +1857,56 @@ class DatabaseService extends ChangeNotifier {
         avatarUrl: avatarUrl ?? _mockUsers[index].avatarUrl,
       );
       _mockUsers[index] = updated;
-      await _storage.saveUser(updated);
-      notifyListeners();
+    } else {
+      final stored = _storage.getUserById(uid);
+      updated = (stored != null)
+          ? stored.copyWith(
+              name: name,
+              mobile: mobile,
+              address: address,
+              latitude: latitude,
+              longitude: longitude,
+              workerSkill: workerSkill,
+              bio: bio,
+              avatarUrl: avatarUrl ?? stored.avatarUrl,
+            )
+          : AppUser(
+              uid: uid,
+              email: '',
+              name: name,
+              mobile: mobile,
+              address: address,
+              latitude: latitude,
+              longitude: longitude,
+              workerSkill: workerSkill,
+              bio: bio,
+              avatarUrl: avatarUrl,
+              role: UserRole.customer,
+            );
+      _mockUsers.add(updated);
+    }
+    await _storage.saveUser(updated);
+    notifyListeners();
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        final Map<String, dynamic> firestoreMap = {
+          'name': name,
+          'mobile': mobile,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'workerSkill': workerSkill,
+          'bio': bio,
+        };
+        if (avatarUrl != null) {
+          firestoreMap['avatarUrl'] = avatarUrl;
+        }
+        await FirebaseFirestore.instance.collection('users').doc(uid).set(firestoreMap, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error updating user profile in Firestore: $e');
+      }
     }
   }
 
@@ -1606,27 +1916,19 @@ class DatabaseService extends ChangeNotifier {
     required double longitude,
     required String address,
   }) async {
-    if (_isFirebaseInitialized) {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-      });
-    }
-
+    // 1. Update local storage & in-memory
     final index = _mockUsers.indexWhere((u) => u.uid == uid);
+    final AppUser updated;
     if (index != -1) {
-      final updated = _mockUsers[index].copyWith(
+      updated = _mockUsers[index].copyWith(
         latitude: latitude,
         longitude: longitude,
         address: address,
       );
       _mockUsers[index] = updated;
-      await _storage.saveUser(updated);
-      notifyListeners();
     } else {
       final stored = _storage.getUserById(uid);
-      final updated = (stored != null)
+      updated = (stored != null)
           ? stored.copyWith(latitude: latitude, longitude: longitude, address: address)
           : AppUser(
               uid: uid,
@@ -1639,8 +1941,21 @@ class DatabaseService extends ChangeNotifier {
               role: UserRole.customer,
             );
       _mockUsers.add(updated);
-      await _storage.saveUser(updated);
-      notifyListeners();
+    }
+    await _storage.saveUser(updated);
+    notifyListeners();
+
+    // 2. Update Firebase server
+    if (_isFirebaseInitialized) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address,
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error updating user location in Firestore: $e');
+      }
     }
   }
 
@@ -1655,12 +1970,19 @@ class DatabaseService extends ChangeNotifier {
     bool strictWithinRadius = false,
   }) {
     final catNorm = category.trim().toLowerCase();
-    var workers = _mockUsers.where((u) {
+    var workers = allUsers.where((u) {
       if (u.role != UserRole.worker) return false;
       final skill = (u.workerSkill ?? '').trim().toLowerCase();
       if (skill.isEmpty || skill == 'general service' || skill == 'all') return true;
       if (catNorm == 'general service' || catNorm == 'all') return true;
-      return skill == catNorm;
+      if (skill == catNorm || skill.contains(catNorm) || catNorm.contains(skill)) return true;
+      if (skill.contains('plumb') && catNorm.contains('plumb')) return true;
+      if (skill.contains('electr') && catNorm.contains('electr')) return true;
+      if (skill.contains('carpent') && catNorm.contains('carpent')) return true;
+      if (skill.contains('paint') && catNorm.contains('paint')) return true;
+      if (skill.contains('clean') && catNorm.contains('clean')) return true;
+      if (skill.contains('appliance') && catNorm.contains('appliance')) return true;
+      return false;
     }).toList();
 
     // Sort: 1) Distance (Nearest First), 2) Highest Rating
@@ -1755,7 +2077,15 @@ class DatabaseService extends ChangeNotifier {
   }) async {
     await checkAndExpireDirectRequests();
 
-    final target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    ServiceRequest? target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          target = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
     if (target == null) throw Exception('Request not found.');
 
     if (target.isDirectExpired || target.status == 'rejected') {
@@ -1792,7 +2122,15 @@ class DatabaseService extends ChangeNotifier {
     required String workerName,
     String? reason,
   }) async {
-    final target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    ServiceRequest? target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          target = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
     if (target == null) return;
 
     final updated = target.copyWith(status: 'rejected');
@@ -1836,29 +2174,89 @@ class DatabaseService extends ChangeNotifier {
         );
       }
     }
+
+    if (_isFirebaseInitialized) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('service_requests')
+            .where('status', isEqualTo: 'direct_pending')
+            .get();
+        for (final doc in snapshot.docs) {
+          final req = ServiceRequest.fromMap(doc.data(), id: doc.id);
+          if (req.directRequestExpiresAt != null && now.isAfter(req.directRequestExpiresAt!)) {
+            final updated = req.copyWith(status: 'rejected');
+            await updateRequest(updated);
+
+            if (req.customerId != null && req.customerId!.isNotEmpty) {
+              await sendNotification(
+                userId: req.customerId!,
+                title: 'Direct Request Expired ⏰',
+                message:
+                    'Your direct request to ${req.targetWorkerName ?? "worker"} expired because they did not respond within 1 hour. You can choose another nearby worker or post a request.',
+                type: 'direct_request_expired',
+                requestId: req.id,
+                relatedUserId: req.targetWorkerId,
+              );
+            }
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   /// Stream direct invitations targeted specifically to this worker
   Stream<List<ServiceRequest>> streamWorkerDirectInvitations(String workerId) {
-    return Stream<List<ServiceRequest>>.multi((controller) {
-      List<ServiceRequest> filter(List<ServiceRequest> list) {
-        final now = DateTime.now();
-        return list.where((r) {
-          if (r.targetWorkerId != workerId) return false;
-          if (r.status != 'direct_pending') return false;
-          if (r.directRequestExpiresAt != null && now.isAfter(r.directRequestExpiresAt!)) {
-            return false;
-          }
-          return true;
-        }).toList();
-      }
+    if (_isFirebaseInitialized) {
+      return FirebaseFirestore.instance
+          .collection('service_requests')
+          .snapshots()
+          .map((snapshot) {
+            final now = DateTime.now();
+            final firestoreList = snapshot.docs
+                .map((doc) => ServiceRequest.fromMap(doc.data(), id: doc.id))
+                .where((r) {
+                  if (r.targetWorkerId != workerId) return false;
+                  if (r.status != 'direct_pending') return false;
+                  if (r.directRequestExpiresAt != null && now.isAfter(r.directRequestExpiresAt!)) {
+                    return false;
+                  }
+                  return true;
+                }).toList();
 
-      controller.add(filter(_mockRequests));
-      final sub = _mockRequestsStreamController.stream.listen((list) {
-        controller.add(filter(list));
+            final map = <String, ServiceRequest>{};
+            for (final r in firestoreList) {
+              map[r.id] = r;
+            }
+            for (final r in _mockRequests) {
+              if (r.targetWorkerId == workerId &&
+                  r.status == 'direct_pending' &&
+                  (r.directRequestExpiresAt == null || !now.isAfter(r.directRequestExpiresAt!))) {
+                map.putIfAbsent(r.id, () => r);
+              }
+            }
+            return map.values.toList();
+          });
+    } else {
+      return Stream<List<ServiceRequest>>.multi((controller) {
+        List<ServiceRequest> filter(List<ServiceRequest> list) {
+          final now = DateTime.now();
+          return list.where((r) {
+            if (r.targetWorkerId != workerId) return false;
+            if (r.status != 'direct_pending') return false;
+            if (r.directRequestExpiresAt != null && now.isAfter(r.directRequestExpiresAt!)) {
+              return false;
+            }
+            return true;
+          }).toList();
+        }
+
+        controller.add(filter(_mockRequests));
+        final sub = _mockRequestsStreamController.stream.listen((list) {
+          controller.add(filter(list));
+        });
+        controller.onCancel = () => sub.cancel();
       });
-      controller.onCancel = () => sub.cancel();
-    });
+    }
   }
 
   /// Upgrade / Activate user's membership in database and dispatch celebratory notification
@@ -1871,9 +2269,23 @@ class DatabaseService extends ChangeNotifier {
   }) async {
     final expiresAt = DateTime.now().add(Duration(days: durationDays));
 
+    AppUser? user;
     final idx = _mockUsers.indexWhere((u) => u.uid == userId);
     if (idx != -1) {
-      final user = _mockUsers[idx];
+      user = _mockUsers[idx];
+    } else {
+      user = _storage.getUserById(userId);
+      if (user == null && _isFirebaseInitialized) {
+        try {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+          if (doc.exists && doc.data() != null) {
+            user = AppUser.fromMap(doc.data()!, uid: doc.id);
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (user != null) {
       final isPro = user.isWorker;
       final updated = user.copyWith(
         membershipPlan: planId,
@@ -1881,17 +2293,21 @@ class DatabaseService extends ChangeNotifier {
         membershipExpiresAt: expiresAt,
         isProMember: isPro,
       );
-      _mockUsers[idx] = updated;
+      if (idx != -1) {
+        _mockUsers[idx] = updated;
+      } else {
+        _mockUsers.add(updated);
+      }
       await _storage.saveUser(updated);
 
       if (_isFirebaseInitialized) {
         try {
-          await FirebaseFirestore.instance.collection('users').doc(userId).update({
+          await FirebaseFirestore.instance.collection('users').doc(userId).set({
             'membershipPlan': planId,
             'membershipTier': tierName,
             'membershipExpiresAt': expiresAt.toIso8601String(),
             'isProMember': isPro,
-          });
+          }, SetOptions(merge: true));
         } catch (e) {
           debugPrint('Error updating membership in Firestore: $e');
         }

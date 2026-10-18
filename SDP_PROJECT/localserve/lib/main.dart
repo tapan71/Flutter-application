@@ -16,15 +16,24 @@ Future<void> main() async {
   await LocalStorageService().init();
 
   // Initialize Firebase safely:
-  // On Web, Firebase.initializeApp() requires explicit FirebaseOptions.
-  // On Android/iOS, it reads from google-services.json / GoogleService-Info.plist.
-  if (!kIsWeb) {
-    try {
+  // On Mobile, it reads from google-services.json automatically.
+  // On Web, it initializes using FirebaseOptions.
+  try {
+    if (kIsWeb) {
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: 'AIzaSyBblhZ5IKvKvGs9N6v98B-9_nxzLylhzuo',
+          appId: '1:709359536387:web:e7360dfaf40316ef6bc136',
+          messagingSenderId: '709359536387',
+          projectId: 'localserve-project',
+          storageBucket: 'localserve-project.firebasestorage.app',
+        ),
+      );
+    } else {
       await Firebase.initializeApp();
-    } catch (_) {
-      // Firebase configuration (google-services.json) is not yet added.
-      // LocalServe automatically operates in offline/mock demo mode.
     }
+  } catch (_) {
+    // LocalServe automatically operates in offline/mock demo mode if Firebase is unreachable.
   }
 
   runApp(const LocalServeApp());
