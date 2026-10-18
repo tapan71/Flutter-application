@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "709359536387",
+    "project_id": "localserve-project",
+    "storage_bucket": "localserve-project.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709359536387:android:e7360dfaf40316ef6bc136",
+        "android_client_info": {
+          "package_name": "com.example.localserve"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBblhZ5IKvKvGs9N6v98B-9_nxzLylhzuo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
