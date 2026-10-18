@@ -35,6 +35,7 @@ class ServiceRequest {
   final String? paymentId; // Razorpay payment ID (e.g. pay_...)
   final String? paymentMethod; // e.g. 'Razorpay'
   final DateTime? paidAt;
+  final String? otp; // 6-digit verification code sent via system email (moditapan0@gmail.com)
 
   ServiceRequest({
     required this.id,
@@ -72,6 +73,7 @@ class ServiceRequest {
     this.paymentId,
     this.paymentMethod,
     this.paidAt,
+    this.otp,
   }) : status = status ?? (completed ? 'completed' : 'pending');
 
   bool get completed => status == 'completed';
@@ -136,6 +138,7 @@ class ServiceRequest {
     String? paymentId,
     String? paymentMethod,
     DateTime? paidAt,
+    String? otp,
   }) {
     String finalStatus = status ?? this.status;
     if (completed != null && status == null) {
@@ -177,6 +180,7 @@ class ServiceRequest {
       paymentId: paymentId ?? this.paymentId,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paidAt: paidAt ?? this.paidAt,
+      otp: otp ?? this.otp,
     );
   }
 
@@ -216,6 +220,7 @@ class ServiceRequest {
       'paymentId': paymentId,
       'paymentMethod': paymentMethod,
       'paidAt': paidAt?.toIso8601String(),
+      'otp': otp,
     };
   }
 
@@ -272,6 +277,7 @@ class ServiceRequest {
       paidAt: map['paidAt'] != null
           ? DateTime.tryParse(map['paidAt'].toString())
           : null,
+      otp: map['otp'] as String?,
     );
   }
 }

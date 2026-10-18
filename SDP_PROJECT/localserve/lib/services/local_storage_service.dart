@@ -35,7 +35,10 @@ class LocalStorageService {
   final List<AppNotification> _notifications = [];
   final List<Review> _reviews = [];
 
+  bool _mockDataCleared = false;
+
   bool get isInitialized => _initialized;
+  bool get isMockDataCleared => _mockDataCleared;
   String? get activeUserId => _activeUserId;
   String get themeMode => _themeMode;
 
@@ -145,6 +148,9 @@ class LocalStorageService {
     }
     if (data['themeMode'] != null) {
       _themeMode = data['themeMode'].toString();
+    }
+    if (data['mockDataCleared'] != null) {
+      _mockDataCleared = data['mockDataCleared'] == true;
     }
 
     if (data['users'] is List) {
@@ -367,6 +373,7 @@ class LocalStorageService {
       final data = {
         'activeUserId': _activeUserId,
         'themeMode': _themeMode,
+        'mockDataCleared': _mockDataCleared,
         'users': _users.values.map((u) => u.toMap()).toList(),
         'passwords': _passwords,
         'requests': _requests.values.map((r) => r.toMap()).toList(),
@@ -515,6 +522,37 @@ class LocalStorageService {
     } else {
       _reviews.insert(0, review);
     }
+    await _flushToDisk();
+  }
+
+  Future<void> setMockDataCleared(bool value) async {
+    _mockDataCleared = value;
+    await _flushToDisk();
+  }
+
+  Future<void> clearAllRequests() async {
+    _requests.clear();
+    await _flushToDisk();
+  }
+
+  Future<void> clearAllNotifications() async {
+    _notifications.clear();
+    await _flushToDisk();
+  }
+
+  Future<void> deleteExpiredNotifications(Duration maxAge) async {
+    final now = DateTime.now();
+    _notifications.removeWhere((n) => now.difference(n.createdAt) >= maxAge);
+    await _flushToDisk();
+  }
+
+  Future<void> deleteNotification(String id) async {
+    _notifications.removeWhere((n) => n.id == id);
+    await _flushToDisk();
+  }
+
+  Future<void> clearAllReviews() async {
+    _reviews.clear();
     await _flushToDisk();
   }
 

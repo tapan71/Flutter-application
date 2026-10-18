@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/service_request.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
+import '../services/email_service.dart';
 import '../widgets/map_preview_card.dart';
 import '../widgets/user_profile_dialog.dart';
 import '../widgets/review_dialog.dart';
 import '../widgets/submit_bill_dialog.dart';
 import '../widgets/razorpay_payment_sheet.dart';
 import '../widgets/app_image_view.dart';
+import '../widgets/job_otp_verification_dialog.dart';
 
 class ServiceDetailsScreen extends StatelessWidget {
   final ServiceRequest request;
@@ -496,6 +499,11 @@ class ServiceDetailsScreen extends StatelessWidget {
                   ),
                 ),
               ),
+            ],
+
+            // SECTION: SERVICE COMPLETION OTP CARD (FOR CUSTOMER)
+            if (isCustomerOwner && !currentReq.completed && !currentReq.isCancelled && currentReq.otp != null && currentReq.otp!.isNotEmpty) ...[
+              _buildOtpSecurityCard(context, currentReq, theme),
             ],
 
             // SECTION: INVOICE & RAZORPAY PAYMENT
@@ -1048,12 +1056,13 @@ class ServiceDetailsScreen extends StatelessWidget {
                                             workerId: effectiveUser.uid,
                                             workerName: effectiveUser.name,
                                             worker: effectiveUser,
+                                            autoConfirm: true,
                                           );
                                           if (ctx.mounted) {
                                             ScaffoldMessenger.of(ctx).showSnackBar(
                                               SnackBar(
                                                 content: Text(
-                                                  'Accepted ${currentReq.service} request! Customer notified to review your profile.',
+                                                  'Accepted ${currentReq.service} request! Job assigned and confirmation emails sent.',
                                                 ),
                                                 backgroundColor: Colors.green,
                                               ),
@@ -1168,14 +1177,29 @@ class ServiceDetailsScreen extends StatelessWidget {
                   icon: const Icon(Icons.check_circle),
                   label: const Text('Mark Job Completed'),
                   onPressed: () async {
-                    await dbService.updateStatus(requestId: currentReq.id, newStatus: 'completed');
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Job completed! You can now leave a mutual review.'),
-                          backgroundColor: Colors.green,
-                        ),
+                    if (isAssignedWorker) {
+                      final verified = await JobOtpVerificationDialog.show(
+                        context,
+                        request: currentReq,
                       );
+                      if (verified == true && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Job OTP verified & completed! You can now leave a mutual review.'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } else {
+                      await dbService.updateStatus(requestId: currentReq.id, newStatus: 'completed');
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Job completed! You can now leave a mutual review.'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
                     }
                   },
                 ),
@@ -2002,6 +2026,163 @@ class ServiceDetailsScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  Widget _buildOtpSecurityCard(BuildContext context, ServiceRequest currentReq, ThemeData theme) {
+    final otp = currentReq.otp ?? '';
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: Colors.teal.shade400, width: 1.5),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            colors: isDark
+                ? [
+                    const Color(0xFF0F766E).withValues(alpha: 0.25),
+                    theme.colorScheme.surface,
+                  ]
+                : [
+                    Colors.teal.shade50.withValues(alpha: 0.7),
+                    Colors.white,
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.key_rounded, color: Colors.teal, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Service Completion OTP',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      Text(
+                        'Emailed to ${currentReq.email} via moditapan0@gmail.com',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_rounded, size: 20, color: Colors.teal),
+                  tooltip: 'Copy OTP',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: otp));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Copied OTP "$otp" to clipboard!'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.teal.shade300, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.teal.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  otp,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 8,
+                    color: isDark ? const Color(0xFF2DD4BF) : const Color(0xFF0F766E),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.info_outline, size: 14, color: Colors.orange),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Please share this OTP with ${currentReq.workerName ?? "your service worker"} ONLY after the work is completely done.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.mail_outline, size: 14),
+                label: const Text('Resend to My Email', style: TextStyle(fontSize: 11)),
+                onPressed: () async {
+                  await EmailService().sendJobVerificationOtpEmail(
+                    customerEmail: currentReq.email,
+                    customerName: currentReq.name,
+                    otp: otp,
+                    serviceName: currentReq.service,
+                    requestId: currentReq.id,
+                    workerName: currentReq.workerName,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('OTP resent via moditapan0@gmail.com to ${currentReq.email}!'),
+                        backgroundColor: Colors.teal,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

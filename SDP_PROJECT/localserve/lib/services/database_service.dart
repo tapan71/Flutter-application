@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +9,7 @@ import '../models/user_model.dart';
 import '../models/review_model.dart';
 import '../models/notification_model.dart';
 import 'local_storage_service.dart';
+import 'email_service.dart';
 
 class DatabaseService extends ChangeNotifier {
   bool _isFirebaseInitialized = false;
@@ -425,6 +427,7 @@ class DatabaseService extends ChangeNotifier {
     return map.values.toList();
   }
   List<AppUser> getAllUsers() => allUsers;
+  List<Review> get allReviews => List.unmodifiable(_mockReviews);
   Stream<List<AppNotification>> streamUserNotifications(String userId) => streamNotifications(userId);
 
   DatabaseService() {
@@ -440,26 +443,35 @@ class DatabaseService extends ChangeNotifier {
 
     await _storage.init();
 
+    // 0. Check if initial mock data should be wiped as requested
+    if (!_storage.isMockDataCleared) {
+      await clearAllFirestoreData();
+    }
+
     // 1. Load Requests
     final savedReqs = _storage.getAllRequests();
-    if (savedReqs.isEmpty) {
-      _mockRequests.addAll(_defaultRequests);
-      await _storage.saveRequestsBatch(_defaultRequests);
-    } else {
+    if (_storage.isMockDataCleared) {
       _mockRequests.addAll(savedReqs);
-      final missingReqs = <ServiceRequest>[];
-      for (final def in _defaultRequests) {
-        final idx = _mockRequests.indexWhere((r) => r.id == def.id);
-        if (idx == -1) {
-          _mockRequests.add(def);
-          missingReqs.add(def);
-        } else if (_mockRequests[idx].service != def.service && (def.id == 'req_2' || def.id == 'req_3')) {
-          _mockRequests[idx] = def;
-          missingReqs.add(def);
+    } else {
+      if (savedReqs.isEmpty) {
+        _mockRequests.addAll(_defaultRequests);
+        await _storage.saveRequestsBatch(_defaultRequests);
+      } else {
+        _mockRequests.addAll(savedReqs);
+        final missingReqs = <ServiceRequest>[];
+        for (final def in _defaultRequests) {
+          final idx = _mockRequests.indexWhere((r) => r.id == def.id);
+          if (idx == -1) {
+            _mockRequests.add(def);
+            missingReqs.add(def);
+          } else if (_mockRequests[idx].service != def.service && (def.id == 'req_2' || def.id == 'req_3')) {
+            _mockRequests[idx] = def;
+            missingReqs.add(def);
+          }
         }
-      }
-      if (missingReqs.isNotEmpty) {
-        await _storage.saveRequestsBatch(missingReqs);
+        if (missingReqs.isNotEmpty) {
+          await _storage.saveRequestsBatch(missingReqs);
+        }
       }
     }
 
@@ -482,39 +494,49 @@ class DatabaseService extends ChangeNotifier {
       }
     }
 
-    // 3. Load Notifications
+    // 3. Load Notifications (Auto-purge older than 24 hours / 1 day)
     final savedNotifs = _storage.getAllNotifications();
-    if (savedNotifs.isEmpty) {
-      _mockNotifications.addAll(_defaultNotifications);
-      for (final n in _defaultNotifications) {
-        await _storage.saveNotification(n);
-      }
+    final cutoff24h = DateTime.now().subtract(const Duration(hours: 24));
+    if (_storage.isMockDataCleared) {
+      _mockNotifications.addAll(savedNotifs.where((n) => n.createdAt.isAfter(cutoff24h)));
     } else {
-      _mockNotifications.addAll(savedNotifs);
+      if (savedNotifs.isEmpty) {
+        _mockNotifications.addAll(_defaultNotifications);
+        for (final n in _defaultNotifications) {
+          await _storage.saveNotification(n);
+        }
+      } else {
+        _mockNotifications.addAll(savedNotifs.where((n) => n.createdAt.isAfter(cutoff24h)));
+      }
     }
 
     // 4. Load Reviews
     final savedRevs = _storage.getAllReviews();
-    if (savedRevs.isEmpty) {
-      _mockReviews.addAll(_defaultReviews);
-      await _storage.saveReviewsBatch(_defaultReviews);
-    } else {
+    if (_storage.isMockDataCleared) {
       _mockReviews.addAll(savedRevs);
-      final missingReviews = <Review>[];
-      for (final def in _defaultReviews) {
-        final idx = _mockReviews.indexWhere((r) => r.id == def.id);
-        if (idx == -1) {
-          _mockReviews.add(def);
-          missingReviews.add(def);
-        } else if (_mockReviews[idx].service != def.service && (def.id == 'rev_1' || def.id == 'rev_2')) {
-          _mockReviews[idx] = def;
-          missingReviews.add(def);
+    } else {
+      if (savedRevs.isEmpty) {
+        _mockReviews.addAll(_defaultReviews);
+        await _storage.saveReviewsBatch(_defaultReviews);
+      } else {
+        _mockReviews.addAll(savedRevs);
+        final missingReviews = <Review>[];
+        for (final def in _defaultReviews) {
+          final idx = _mockReviews.indexWhere((r) => r.id == def.id);
+          if (idx == -1) {
+            _mockReviews.add(def);
+            missingReviews.add(def);
+          } else if (_mockReviews[idx].service != def.service && (def.id == 'rev_1' || def.id == 'rev_2')) {
+            _mockReviews[idx] = def;
+            missingReviews.add(def);
+          }
+        }
+        if (missingReviews.isNotEmpty) {
+          await _storage.saveReviewsBatch(missingReviews);
         }
       }
-      if (missingReviews.isNotEmpty) {
-        await _storage.saveReviewsBatch(missingReviews);
-      }
     }
+    unawaited(cleanupExpiredNotifications());
 
     // 5. Enforce trade specialization integrity across demo workers:
     // A Plumber (demo_worker_1) must ONLY have Plumbing jobs and Plumbing reviews.
@@ -881,16 +903,46 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  // --- IN-APP NOTIFICATIONS ---
+  // --- IN-APP NOTIFICATIONS (Auto-expires after 24 hours / 1 day) ---
+
+  /// Auto-clean and delete notifications older than 24 hours across local and Firestore
+  Future<void> cleanupExpiredNotifications() async {
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    final expiredIds = _mockNotifications
+        .where((n) => n.createdAt.isBefore(cutoff))
+        .map((n) => n.id)
+        .toList();
+
+    if (expiredIds.isNotEmpty) {
+      _mockNotifications.removeWhere((n) => expiredIds.contains(n.id));
+      await _storage.deleteExpiredNotifications(const Duration(hours: 24));
+      _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
+      notifyListeners();
+
+      if (_isFirebaseInitialized) {
+        try {
+          for (final id in expiredIds) {
+            await FirebaseFirestore.instance.collection('notifications').doc(id).delete();
+          }
+        } catch (e) {
+          debugPrint('Expired notifications Firestore deletion warning: $e');
+        }
+      }
+    }
+  }
 
   List<AppNotification> getNotifications(String userId) {
-    return _mockNotifications.where((n) => n.userId == userId).toList();
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    return _mockNotifications
+        .where((n) => n.userId == userId && n.createdAt.isAfter(cutoff))
+        .toList();
   }
 
   Stream<List<AppNotification>> streamNotifications(String userId) =>
       streamNotificationsForUser(userId);
 
   Stream<List<AppNotification>> streamNotificationsForUser(String userId) {
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
     if (_isFirebaseInitialized) {
       return FirebaseFirestore.instance
           .collection('notifications')
@@ -899,13 +951,14 @@ class DatabaseService extends ChangeNotifier {
           .map((snapshot) {
         final firestoreList = snapshot.docs
             .map((doc) => AppNotification.fromMap(doc.data(), id: doc.id))
+            .where((n) => n.createdAt.isAfter(cutoff))
             .toList();
         final map = <String, AppNotification>{};
         for (final n in firestoreList) {
           map[n.id] = n;
         }
         for (final n in _mockNotifications) {
-          if (n.userId == userId) {
+          if (n.userId == userId && n.createdAt.isAfter(cutoff)) {
             map.putIfAbsent(n.id, () => n);
           }
         }
@@ -916,7 +969,9 @@ class DatabaseService extends ChangeNotifier {
     } else {
       return Stream<List<AppNotification>>.multi((controller) {
         List<AppNotification> filter(List<AppNotification> list) {
-          final res = list.where((n) => n.userId == userId).toList();
+          final res = list
+              .where((n) => n.userId == userId && n.createdAt.isAfter(cutoff))
+              .toList();
           res.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return res;
         }
@@ -937,7 +992,12 @@ class DatabaseService extends ChangeNotifier {
     required String type,
     String? requestId,
     String? relatedUserId,
+    String? customerEmail,
+    String? workerEmail,
   }) async {
+    // 0. Auto-clean notifications older than 24 hours
+    unawaited(cleanupExpiredNotifications());
+
     final notif = AppNotification(
       id: 'notif_${DateTime.now().millisecondsSinceEpoch}_${_mockNotifications.length}',
       userId: userId,
@@ -966,6 +1026,137 @@ class DatabaseService extends ChangeNotifier {
         debugPrint('Error saving notification in Firestore: $e');
       }
     }
+
+    // 3. Dispatch notification email to BOTH Customer and Worker
+    unawaited(_dispatchNotificationEmails(
+      userId: userId,
+      relatedUserId: relatedUserId,
+      requestId: requestId,
+      title: title,
+      message: message,
+      overrideCustomerEmail: customerEmail,
+      overrideWorkerEmail: workerEmail,
+    ));
+  }
+
+  Future<void> _dispatchNotificationEmails({
+    required String userId,
+    String? relatedUserId,
+    String? requestId,
+    required String title,
+    required String message,
+    String? overrideCustomerEmail,
+    String? overrideWorkerEmail,
+  }) async {
+    String? cEmail = overrideCustomerEmail;
+    String? wEmail = overrideWorkerEmail;
+    String? serviceName;
+    String? reqOtp;
+
+    if (requestId != null) {
+      final req = _mockRequests.where((r) => r.id == requestId).firstOrNull ??
+          _storage.getRequestById(requestId);
+      if (req != null) {
+        serviceName = req.service;
+        reqOtp = req.otp;
+        if (req.email.isNotEmpty && cEmail == null) {
+          cEmail = req.email;
+        }
+        if (req.customerId != null && req.customerId!.isNotEmpty && cEmail == null) {
+          final cust = await getUserById(req.customerId!);
+          if (cust != null && cust.email.isNotEmpty) cEmail = cust.email;
+        }
+        if (req.workerId != null && req.workerId!.isNotEmpty && wEmail == null) {
+          final wrk = await getUserById(req.workerId!);
+          if (wrk != null && wrk.email.isNotEmpty) wEmail = wrk.email;
+        }
+      }
+    }
+
+    if (cEmail == null || wEmail == null) {
+      final user1 = await getUserById(userId);
+      if (user1 != null) {
+        if (user1.isWorker) {
+          wEmail ??= user1.email;
+        } else {
+          cEmail ??= user1.email;
+        }
+      }
+      if (relatedUserId != null) {
+        final user2 = await getUserById(relatedUserId);
+        if (user2 != null) {
+          if (user2.isWorker) {
+            wEmail ??= user2.email;
+          } else {
+            cEmail ??= user2.email;
+          }
+        }
+      }
+    }
+
+    try {
+      await EmailService().sendDualPartyNotificationEmail(
+        customerEmail: cEmail,
+        workerEmail: wEmail,
+        title: title,
+        message: message,
+        serviceType: serviceName,
+        requestId: requestId,
+        otp: reqOtp,
+      );
+    } catch (e) {
+      debugPrint('[DatabaseService] Email notification dispatch notice: $e');
+    }
+  }
+
+  /// Completely wipe all requests, notifications, and reviews from Firestore collections and local storage
+  /// Ensures only newly created data will be stored moving forward.
+  Future<void> clearAllFirestoreData({bool clearUsers = false}) async {
+    debugPrint('[DatabaseService] Clearing all data from Firestore & Local Storage...');
+
+    // 1. Clear local memory and storage
+    _mockRequests.clear();
+    _mockNotifications.clear();
+    _mockReviews.clear();
+    await _storage.clearAllRequests();
+    await _storage.clearAllNotifications();
+    await _storage.clearAllReviews();
+    await _storage.setMockDataCleared(true);
+
+    // 2. Delete all Firestore collection documents
+    if (_isFirebaseInitialized) {
+      try {
+        final reqDocs = await FirebaseFirestore.instance.collection('service_requests').get();
+        for (final doc in reqDocs.docs) {
+          await doc.reference.delete();
+        }
+
+        final notifDocs = await FirebaseFirestore.instance.collection('notifications').get();
+        for (final doc in notifDocs.docs) {
+          await doc.reference.delete();
+        }
+
+        final revDocs = await FirebaseFirestore.instance.collection('reviews').get();
+        for (final doc in revDocs.docs) {
+          await doc.reference.delete();
+        }
+
+        if (clearUsers) {
+          final userDocs = await FirebaseFirestore.instance.collection('users').get();
+          for (final doc in userDocs.docs) {
+            await doc.reference.delete();
+          }
+        }
+        debugPrint('[DatabaseService] Firestore collections successfully wiped.');
+      } catch (e) {
+        debugPrint('[DatabaseService] Firestore wipe warning: $e');
+      }
+    }
+
+    _mockRequestsStreamController.add(List.unmodifiable(_mockRequests));
+    _mockNotificationsStreamController.add(List.unmodifiable(_mockNotifications));
+    _mockReviewsStreamController.add(List.unmodifiable(_mockReviews));
+    notifyListeners();
   }
 
   Future<void> markNotificationsAsRead(String userId) async {
@@ -1158,7 +1349,15 @@ class DatabaseService extends ChangeNotifier {
   // --- CRUD ACTIONS ---
 
   Future<void> addRequest(ServiceRequest request) async {
-    final newReq = request.copyWith(status: request.status.isEmpty ? 'pending' : request.status);
+    // Generate secure 6-digit verification OTP if not provided
+    final String generatedOtp = (request.otp != null && request.otp!.trim().isNotEmpty)
+        ? request.otp!.trim()
+        : (100000 + Random().nextInt(900000)).toString();
+
+    final newReq = request.copyWith(
+      status: request.status.isEmpty ? 'pending' : request.status,
+      otp: generatedOtp,
+    );
     _mockRequests.removeWhere((r) => r.id == newReq.id);
     _mockRequests.insert(0, newReq);
     await _storage.saveRequest(newReq);
@@ -1173,6 +1372,75 @@ class DatabaseService extends ChangeNotifier {
             .set(newReq.toMap());
       } catch (e) {
         debugPrint('Error saving request to Firestore: $e');
+      }
+    }
+
+    // Dispatch genuine verification email from system sender moditapan0@gmail.com
+    unawaited(EmailService().sendJobVerificationOtpEmail(
+      customerEmail: newReq.email,
+      customerName: newReq.name,
+      otp: generatedOtp,
+      serviceName: newReq.service,
+      requestId: newReq.id,
+      workerName: newReq.workerName,
+    ));
+
+    // Send in-app notification to customer
+    if (newReq.customerId != null && newReq.customerId!.isNotEmpty) {
+      unawaited(sendNotification(
+        userId: newReq.customerId!,
+        title: 'Service Booked: ${newReq.service}',
+        message: 'Your service request has been booked! Your Completion OTP is $generatedOtp.',
+        type: 'request_created',
+        requestId: newReq.id,
+        customerEmail: newReq.email,
+      ));
+    }
+
+    // If general service request (not targeted to a single worker), notify all nearby workers matching category
+    if (!newReq.isDirectRequest) {
+      double? custLat = newReq.latitude;
+      double? custLon = newReq.longitude;
+      if ((custLat == null || custLon == null) && newReq.customerId != null) {
+        final cust = _mockUsers.where((u) => u.uid == newReq.customerId).firstOrNull;
+        if (cust != null) {
+          custLat = cust.latitude;
+          custLon = cust.longitude;
+        }
+      }
+
+      final nearbyWorkers = getWorkersForCategory(
+        newReq.service,
+        customerLat: custLat,
+        customerLon: custLon,
+        maxDistanceKm: maxWorkerDistanceKm,
+        strictWithinRadius: (custLat != null && custLon != null),
+      );
+
+      for (final worker in nearbyWorkers) {
+        if (worker.uid != newReq.customerId && worker.email.isNotEmpty) {
+          final dist = calculateDistanceKm(
+            lat1: custLat,
+            lon1: custLon,
+            lat2: worker.latitude,
+            lon2: worker.longitude,
+          );
+
+          unawaited(EmailService().sendNearbyJobAlertEmail(
+            request: newReq,
+            worker: worker,
+            distanceKm: dist,
+          ));
+
+          unawaited(sendNotification(
+            userId: worker.uid,
+            title: 'New ${newReq.service} Job Nearby! 📍',
+            message: 'Customer ${newReq.name} requested ${newReq.service} nearby at ${newReq.address}. Tap to apply.',
+            type: 'nearby_job_available',
+            requestId: newReq.id,
+            relatedUserId: newReq.customerId,
+          ));
+        }
       }
     }
   }
@@ -1428,6 +1696,22 @@ class DatabaseService extends ChangeNotifier {
     }
 
     final isDirectAccepted = target.status == 'direct_pending' && target.targetWorkerId == workerId;
+    if (autoConfirm || isDirectAccepted) {
+      final wrk = await getUserById(workerId);
+      final cust = (target.customerId != null) ? await getUserById(target.customerId!) : null;
+      final cEmail = target.email.isNotEmpty ? target.email : (cust?.email ?? '');
+      final cName = target.name.isNotEmpty ? target.name : (cust?.name ?? 'Customer');
+
+      unawaited(EmailService().sendJobAcceptedEmail(
+        request: updatedReq,
+        workerName: workerName,
+        workerEmail: wrk?.email,
+        customerName: cName,
+        customerEmail: cEmail,
+        isDirectRequest: isDirectAccepted,
+      ));
+    }
+
     if (target.customerId != null && target.customerId!.isNotEmpty) {
       await sendNotification(
         userId: target.customerId!,
@@ -1502,14 +1786,49 @@ class DatabaseService extends ChangeNotifier {
     }
 
     if (targetReq != null) {
+      final wrk = await getUserById(workerId);
+      final otpToUse = targetReq.otp ?? (100000 + Random().nextInt(900000)).toString();
+
+      // Dispatch real job accepted confirmation email to both customer and worker
+      unawaited(EmailService().sendJobAcceptedEmail(
+        request: targetReq.copyWith(workerId: workerId, workerName: workerName, status: 'assigned'),
+        workerName: workerName,
+        workerEmail: wrk?.email,
+        customerName: targetReq.name,
+        customerEmail: targetReq.email,
+        isDirectRequest: false,
+      ));
+
+      // Dispatch real email from moditapan0@gmail.com with OTP instructions
+      unawaited(EmailService().sendJobVerificationOtpEmail(
+        customerEmail: targetReq.email,
+        customerName: targetReq.name,
+        otp: otpToUse,
+        serviceName: targetReq.service,
+        requestId: targetReq.id,
+        workerName: workerName,
+        workerEmail: wrk?.email,
+      ));
+
       await sendNotification(
         userId: workerId,
         title: 'Job Confirmed! 🎉',
-        message: '${targetReq.name} accepted your application for ${targetReq.service}! You can now start work.',
+        message: '${targetReq.name} accepted your application for ${targetReq.service}! Verification OTP will be provided by customer upon job completion.',
         type: 'customer_accepted',
         requestId: requestId,
         relatedUserId: targetReq.customerId,
       );
+
+      if (targetReq.customerId != null && targetReq.customerId!.isNotEmpty) {
+        await sendNotification(
+          userId: targetReq.customerId!,
+          title: 'Worker Confirmed! 🛠️',
+          message: 'You have confirmed $workerName for ${targetReq.service}. Your completion OTP is $otpToUse.',
+          type: 'worker_confirmed',
+          requestId: requestId,
+          relatedUserId: workerId,
+        );
+      }
 
       final otherApplicants = targetReq.applicantWorkerIds.where((id) => id != workerId).toList();
       for (final otherId in otherApplicants) {
@@ -1630,10 +1949,21 @@ class DatabaseService extends ChangeNotifier {
     }
 
     if (newStatus == 'completed' && targetReq != null) {
+      final cust = (targetReq.customerId != null) ? await getUserById(targetReq.customerId!) : null;
+      final wrk = (targetReq.workerId != null) ? await getUserById(targetReq.workerId!) : null;
+      final cEmail = targetReq.email.isNotEmpty ? targetReq.email : (cust?.email ?? '');
+
+      // Dispatch real completion email from moditapan0@gmail.com to both customer & worker
+      unawaited(EmailService().sendJobCompletedEmail(
+        request: targetReq.copyWith(status: 'completed', completed: true),
+        customerEmail: cEmail,
+        workerEmail: wrk?.email,
+      ));
+
       if (targetReq.customerId != null && targetReq.customerId!.isNotEmpty) {
         await sendNotification(
           userId: targetReq.customerId!,
-          title: 'Job Completed!',
+          title: 'Job Completed! 🎉',
           message: 'Your ${targetReq.service} job is complete. Please leave a review for ${targetReq.workerName ?? "your worker"}!',
           type: 'job_completed',
           requestId: requestId,
@@ -1643,7 +1973,7 @@ class DatabaseService extends ChangeNotifier {
       if (targetReq.workerId != null && targetReq.workerId!.isNotEmpty) {
         await sendNotification(
           userId: targetReq.workerId!,
-          title: 'Job Completed!',
+          title: 'Job Completed! 🎉',
           message: 'The ${targetReq.service} job for ${targetReq.name} is complete. Please leave a review for the customer!',
           type: 'job_completed',
           requestId: requestId,
@@ -1651,6 +1981,38 @@ class DatabaseService extends ChangeNotifier {
         );
       }
     }
+  }
+
+  /// Verify the 6-digit customer OTP and mark the job completed
+  Future<bool> verifyAndCompleteJob({
+    required String requestId,
+    required String enteredOtp,
+  }) async {
+    final cleanOtp = enteredOtp.trim();
+    ServiceRequest? target = _mockRequests.where((r) => r.id == requestId).firstOrNull;
+    if (target == null && _isFirebaseInitialized) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('service_requests').doc(requestId).get();
+        if (doc.exists && doc.data() != null) {
+          target = ServiceRequest.fromMap(doc.data()!, id: doc.id);
+        }
+      } catch (_) {}
+    }
+
+    if (target == null) {
+      throw Exception('Service request not found.');
+    }
+
+    // Verify OTP matches expected code
+    final expectedOtp = target.otp?.trim();
+    if (expectedOtp != null && expectedOtp.isNotEmpty) {
+      if (cleanOtp != expectedOtp) {
+        return false;
+      }
+    }
+
+    await updateStatus(requestId: requestId, newStatus: 'completed');
+    return true;
   }
 
   /// Worker submits finalized bill after inspecting the work on-site.
@@ -1754,6 +2116,20 @@ class DatabaseService extends ChangeNotifier {
 
     await updateRequest(updated);
 
+    final wrk = (updated.workerId != null) ? await getUserById(updated.workerId!) : null;
+    final cust = (updated.customerId != null) ? await getUserById(updated.customerId!) : null;
+    final cEmail = updated.email.isNotEmpty ? updated.email : (cust?.email ?? '');
+
+    // Dispatch real payment receipt email to customer & payment credit email to worker
+    unawaited(EmailService().sendPaymentReceiptEmail(
+      request: updated,
+      amount: amount,
+      paymentId: paymentId,
+      paymentMethod: paymentMethod,
+      customerEmail: cEmail,
+      workerEmail: wrk?.email,
+    ));
+
     // Notify worker
     if (updated.workerId != null && updated.workerId!.isNotEmpty) {
       await sendNotification(
@@ -1762,6 +2138,7 @@ class DatabaseService extends ChangeNotifier {
         message: 'Customer ${updated.name} paid ₹${amount.toStringAsFixed(0)} for ${updated.service} via Razorpay (Payment ID: $paymentId).',
         type: 'payment_received',
         requestId: updated.id,
+        relatedUserId: updated.customerId,
       );
     }
 
@@ -2067,6 +2444,13 @@ class DatabaseService extends ChangeNotifier {
       requestId: directReq.id,
       relatedUserId: targetWorker.uid,
     );
+
+    // 3. Dispatch real email to targeted worker & customer confirmation from moditapan0@gmail.com
+    unawaited(EmailService().sendDirectRequestEmail(
+      request: directReq,
+      customer: customer,
+      targetWorker: targetWorker,
+    ));
   }
 
   /// Worker accepts a direct request within the 1-hour window
@@ -2103,6 +2487,12 @@ class DatabaseService extends ChangeNotifier {
     );
     await updateRequest(updated);
 
+    final wrk = await getUserById(workerId);
+    final cust = (target.customerId != null) ? await getUserById(target.customerId!) : null;
+    final cEmail = target.email.isNotEmpty ? target.email : (cust?.email ?? '');
+    final cName = target.name.isNotEmpty ? target.name : (cust?.name ?? 'Customer');
+
+    // 1. App notification to Customer
     if (target.customerId != null && target.customerId!.isNotEmpty) {
       await sendNotification(
         userId: target.customerId!,
@@ -2113,6 +2503,26 @@ class DatabaseService extends ChangeNotifier {
         relatedUserId: workerId,
       );
     }
+
+    // 2. App notification to Worker
+    await sendNotification(
+      userId: workerId,
+      title: 'Job Accepted! 🛠️',
+      message: 'You have accepted $cName\'s direct request for ${target.service}! Work is scheduled at ${target.address}.',
+      type: 'direct_request_accepted_worker',
+      requestId: requestId,
+      relatedUserId: target.customerId,
+    );
+
+    // 3. Real email notification from moditapan0@gmail.com to both customer and worker
+    unawaited(EmailService().sendJobAcceptedEmail(
+      request: updated,
+      workerName: workerName,
+      workerEmail: wrk?.email,
+      customerName: cName,
+      customerEmail: cEmail,
+      isDirectRequest: true,
+    ));
   }
 
   /// Worker declines a direct request

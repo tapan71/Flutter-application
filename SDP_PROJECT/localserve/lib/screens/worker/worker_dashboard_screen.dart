@@ -13,7 +13,7 @@ import '../../widgets/theme_mode_toggle_button.dart';
 import '../../widgets/edit_profile_dialog.dart';
 import '../../widgets/user_profile_dialog.dart';
 import '../../widgets/submit_bill_dialog.dart';
-
+import '../../widgets/job_otp_verification_dialog.dart';
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
 
@@ -1106,6 +1106,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                                           workerId: worker.uid,
                                                           workerName: worker.name,
                                                           worker: worker,
+                                                          autoConfirm: true,
                                                         );
                                                         if (context.mounted) {
                                                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1425,10 +1426,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen>
                                     newStatus: 'in_progress',
                                   );
                                 } else if (val == 'complete') {
-                                  await dbService.updateStatus(
-                                    requestId: job.id,
-                                    newStatus: 'completed',
+                                  final verified = await JobOtpVerificationDialog.show(
+                                    context,
+                                    request: job,
                                   );
+                                  if (verified == true && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Job OTP verified & marked completed!'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                               itemBuilder: (ctx) => [

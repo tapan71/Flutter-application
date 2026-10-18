@@ -569,6 +569,91 @@ class UserProfileDialog extends StatelessWidget {
                       },
                     ),
 
+                    if (showEditProfileButton) ...[
+                      const SizedBox(height: 24),
+                      const Divider(),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(Icons.cloud_sync_rounded,
+                              size: 18, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Database & Cloud Sync',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Remove all mock data from Firestore server and local storage so that only new requests, jobs, and reviews are saved.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red.shade700,
+                          side: BorderSide(color: Colors.red.shade300),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                        label: const Text(
+                          'Clear All Firestore Data',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Clear All Firestore Data?'),
+                              content: const Text(
+                                'This will remove all requests, reviews, and notifications from the Firestore server and local storage.\n\nAll subsequent jobs, reviews, and requests will be stored as fresh new data.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red.shade700,
+                                  ),
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Clear Everything'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirmed == true && context.mounted) {
+                            await dbService.clearAllFirestoreData();
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'All data removed from Firestore & local server.',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ],
+
                     // Confirmation Action Buttons (if shown in customer applicant flow)
                     if (showActionButtons) ...[
                       const SizedBox(height: 24),

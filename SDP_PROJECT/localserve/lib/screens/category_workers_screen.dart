@@ -276,12 +276,6 @@ class _CategoryWorkersScreenState extends State<CategoryWorkersScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Direct requests give workers 1 hour to accept. You can also view reviews and past jobs.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-
                   const SizedBox(height: 12),
 
                   // Workers List

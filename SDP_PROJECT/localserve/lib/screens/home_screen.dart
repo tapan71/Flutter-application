@@ -454,6 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Notification badge
           NotificationBadgeButton(user: user),
 
+
           // VIP Symbol & Profile Avatar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -662,7 +663,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   final reqs = dbService.allRequests.where((r) =>
                     (r.customerId == user.uid || (r.email.isNotEmpty && r.email.toLowerCase() == user.email.toLowerCase()))
                   ).toList();
-                  final activeReqs = reqs.where((r) => !r.completed && !r.isCancelled && r.status != 'cancelled').toList();
+                  final activeReqs = reqs.where((r) =>
+                    !r.completed &&
+                    !r.isCancelled &&
+                    r.status != 'cancelled' &&
+                    !r.isDirectRequest &&
+                    r.status != 'direct_pending'
+                  ).toList();
 
                   if (activeReqs.isEmpty) return const SizedBox.shrink();
 
@@ -685,10 +692,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         : 'Worker Assigned';
                     statusColor = Colors.blue;
                     statusIcon = Icons.assignment_turned_in;
-                  } else if (latestActive.isDirectRequest) {
-                    statusLabel = 'Direct Request Sent';
-                    statusColor = Colors.deepPurple;
-                    statusIcon = Icons.person_search;
                   }
 
                   return Container(
@@ -908,6 +911,183 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
+              ),
+
+              // Active Jobs Section for Customer
+              Builder(
+                builder: (ctx) {
+                  final authService = ctx.watch<AuthService>();
+                  final dbService = ctx.watch<DatabaseService>();
+                  final user = authService.currentUser;
+                  if (user == null || user.isWorker) return const SizedBox.shrink();
+
+                  final myReqs = dbService.getCustomerRequests(
+                    user.uid,
+                    customerEmail: user.email,
+                  );
+                  final activeReqs = myReqs
+                      .where((r) =>
+                          !r.completed &&
+                          r.status.toLowerCase() != 'completed' &&
+                          r.status.toLowerCase() != 'cancelled' &&
+                          !r.isCancelled)
+                      .toList();
+
+                  if (activeReqs.isEmpty) return const SizedBox.shrink();
+
+                  return Container(
+                    margin: const EdgeInsets.only(top: 16, bottom: 4),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Theme.of(ctx)
+                              .colorScheme
+                              .primaryContainer
+                              .withValues(alpha: 0.6),
+                          Theme.of(ctx).colorScheme.surface,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.bolt,
+                                  size: 16,
+                                  color: Theme.of(ctx).colorScheme.primary),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Active Jobs in Progress (${activeReqs.length})',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  ctx,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        HistoryScreen(currentUser: user),
+                                  ),
+                                );
+                              },
+                              child: const Text('View All',
+                                  style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ...activeReqs.take(2).map((req) {
+                          return Container(
+                            margin: const EdgeInsets.only(top: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Theme.of(ctx).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .outline
+                                    .withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  ctx,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ServiceDetailsScreen(request: req),
+                                  ),
+                                );
+                              },
+                              child: Row(
+                                children: [
+                                  Icon(Icons.build_circle_outlined,
+                                      size: 18,
+                                      color:
+                                          Theme.of(ctx).colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          req.service,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13),
+                                        ),
+                                        Text(
+                                          req.description.isNotEmpty
+                                              ? req.description
+                                              : req.address,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: Theme.of(ctx)
+                                                  .colorScheme
+                                                  .outline),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      req.status.toUpperCase(),
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 20),

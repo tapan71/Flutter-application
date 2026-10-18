@@ -6,6 +6,8 @@ import '../services/database_service.dart';
 import 'service_details_screen.dart';
 import 'service_request_screen.dart';
 import '../widgets/razorpay_payment_sheet.dart';
+import '../widgets/review_dialog.dart';
+import '../widgets/job_otp_verification_dialog.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({
@@ -39,8 +41,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     } else {
       _tabs = [
         'All',
-        'Pending',
-        'Assigned',
+        'Active Jobs',
         'Completed',
       ];
     }
@@ -139,12 +140,12 @@ class _HistoryScreenState extends State<HistoryScreen>
 
         // Calculate summary counters
         final totalCount = sourceList.length;
-        final pendingCount =
-            sourceList.where((r) => r.status.toLowerCase() == 'pending').length;
-        final assignedCount = sourceList
+        final activeCount = sourceList
             .where((r) =>
-                r.status.toLowerCase() == 'assigned' ||
-                r.status.toLowerCase() == 'in_progress')
+                !r.completed &&
+                r.status.toLowerCase() != 'completed' &&
+                r.status.toLowerCase() != 'cancelled' &&
+                !r.isCancelled)
             .length;
         final completedCount =
             sourceList.where((r) => r.completed || r.status == 'completed').length;
@@ -193,14 +194,13 @@ class _HistoryScreenState extends State<HistoryScreen>
               tabs: user.isWorker
                   ? [
                       Tab(text: 'All ($totalCount)'),
-                      Tab(text: 'Active ($assignedCount)'),
+                      Tab(text: 'Active ($activeCount)'),
                       Tab(text: 'Completed ($completedCount)'),
                     ]
                   : [
                       Tab(text: 'All ($totalCount)'),
-                      Tab(text: 'Pending ($pendingCount)'),
-                      Tab(text: 'Assigned ($assignedCount)'),
-                      Tab(text: 'Done ($completedCount)'),
+                      Tab(text: 'Active Jobs ($activeCount)'),
+                      Tab(text: 'Completed ($completedCount)'),
                     ],
             ),
           ),
@@ -307,8 +307,10 @@ class _HistoryScreenState extends State<HistoryScreen>
                           _buildRequestsList(
                             filteredBySearch
                                 .where((r) =>
-                                    r.status.toLowerCase() == 'assigned' ||
-                                    r.status.toLowerCase() == 'in_progress')
+                                    !r.completed &&
+                                    r.status.toLowerCase() != 'completed' &&
+                                    r.status.toLowerCase() != 'cancelled' &&
+                                    !r.isCancelled)
                                 .toList(),
                             theme,
                             dbService,
@@ -329,27 +331,20 @@ class _HistoryScreenState extends State<HistoryScreen>
                           // TAB 1: ALL
                           _buildRequestsList(filteredBySearch, theme, dbService),
 
-                          // TAB 2: PENDING
-                          _buildRequestsList(
-                            filteredBySearch
-                                .where((r) => r.status.toLowerCase() == 'pending')
-                                .toList(),
-                            theme,
-                            dbService,
-                          ),
-
-                          // TAB 3: ASSIGNED / IN PROGRESS
+                          // TAB 2: ACTIVE JOBS (All customer requests that are in progress / pending / direct / billed)
                           _buildRequestsList(
                             filteredBySearch
                                 .where((r) =>
-                                    r.status.toLowerCase() == 'assigned' ||
-                                    r.status.toLowerCase() == 'in_progress')
+                                    !r.completed &&
+                                    r.status.toLowerCase() != 'completed' &&
+                                    r.status.toLowerCase() != 'cancelled' &&
+                                    !r.isCancelled)
                                 .toList(),
                             theme,
                             dbService,
                           ),
 
-                          // TAB 4: COMPLETED
+                          // TAB 3: COMPLETED (Completed requests with reviews)
                           _buildRequestsList(
                             filteredBySearch
                                 .where((r) =>
@@ -644,6 +639,10 @@ class _HistoryScreenState extends State<HistoryScreen>
                     _buildPaymentDetailsCard(req, theme, dbService),
                   ],
 
+                  if (isCompleted) ...[
+                    _buildReviewsSection(req, theme, dbService),
+                  ],
+
                   const SizedBox(height: 12),
 
                   // Bottom action buttons
@@ -661,10 +660,25 @@ class _HistoryScreenState extends State<HistoryScreen>
                             style: TextStyle(fontSize: 13),
                           ),
                           onPressed: () async {
-                            await dbService.updateStatus(
-                              requestId: req.id,
-                              newStatus: 'completed',
-                            );
+                            if (widget.currentUser.isWorker) {
+                              final verified = await JobOtpVerificationDialog.show(
+                                context,
+                                request: req,
+                              );
+                              if (verified == true && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Job OTP verified & marked completed!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            } else {
+                              await dbService.updateStatus(
+                                requestId: req.id,
+                                newStatus: 'completed',
+                              );
+                            }
                           },
                         )
                       else if (!widget.currentUser.isWorker)
@@ -685,6 +699,42 @@ class _HistoryScreenState extends State<HistoryScreen>
                           },
                         ),
                       const SizedBox(width: 8),
+                      if (isCompleted &&
+                          !(widget.currentUser.isWorker
+                              ? req.workerReviewed
+                              : req.customerReviewed)) ...[
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          icon: const Icon(Icons.star_rounded,
+                              size: 16, color: Colors.amber),
+                          label: Text(
+                            widget.currentUser.isWorker
+                                ? 'Rate Customer'
+                                : 'Write Review',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () {
+                            ReviewDialog.show(
+                              context,
+                              request: req,
+                              currentUser: widget.currentUser,
+                              targetUserId: widget.currentUser.isWorker
+                                  ? (req.customerId ?? '')
+                                  : (req.workerId ?? ''),
+                              targetUserName: widget.currentUser.isWorker
+                                  ? req.name
+                                  : (req.workerName ?? 'Worker'),
+                              isCustomerReviewingWorker:
+                                  !widget.currentUser.isWorker,
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       if (!widget.currentUser.isWorker && req.canPay) ...[
                         FilledButton.icon(
                           style: FilledButton.styleFrom(
@@ -918,6 +968,177 @@ class _HistoryScreenState extends State<HistoryScreen>
                 ],
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewsSection(
+    ServiceRequest req,
+    ThemeData theme,
+    DatabaseService dbService,
+  ) {
+    final user = widget.currentUser;
+    final hasUserReviewed =
+        user.isWorker ? req.workerReviewed : req.customerReviewed;
+    final reqReviews =
+        dbService.allReviews.where((r) => r.requestId == req.id).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.rate_review_rounded, size: 16, color: Colors.amber),
+              const SizedBox(width: 6),
+              Text(
+                'Service Reviews & Feedback',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              if (!hasUserReviewed)
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  ),
+                  icon: const Icon(Icons.star_rounded,
+                      size: 15, color: Colors.amber),
+                  label: Text(
+                    user.isWorker ? 'Rate Customer' : 'Write Review',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () {
+                    ReviewDialog.show(
+                      context,
+                      request: req,
+                      currentUser: user,
+                      targetUserId:
+                          user.isWorker ? (req.customerId ?? '') : (req.workerId ?? ''),
+                      targetUserName: user.isWorker
+                          ? req.name
+                          : (req.workerName ?? 'Worker'),
+                      isCustomerReviewingWorker: !user.isWorker,
+                    );
+                  },
+                ),
+            ],
+          ),
+          if (reqReviews.isEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              hasUserReviewed
+                  ? 'Your review has been recorded.'
+                  : 'No reviews submitted yet for this completed job.',
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            ...reqReviews.map((rev) {
+              final isFromCustomer =
+                  rev.fromUserRole.toLowerCase() == 'customer';
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.15),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Row(
+                          children: List.generate(
+                            5,
+                            (starIndex) => Icon(
+                              starIndex < rev.rating.round()
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              size: 14,
+                              color: Colors.amber,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          rev.rating.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isFromCustomer
+                                ? Colors.blue.withValues(alpha: 0.12)
+                                : Colors.green.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isFromCustomer
+                                ? 'Customer Review'
+                                : 'Worker Feedback',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: isFromCustomer
+                                  ? Colors.blue.shade700
+                                  : Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      rev.comment,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface
+                            .withValues(alpha: 0.85),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'By ${rev.fromUserName}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
           ],
         ],
       ),
